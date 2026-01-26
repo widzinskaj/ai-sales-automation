@@ -1,68 +1,141 @@
 # AI Sales Automation
 
-Privacy-first, Python-based sales automation framework for small service businesses.
+A Python-based foundation for building end-to-end sales automation systems
+for small and medium service businesses.
 
-This project focuses on automating the **first response to customer inquiries**
-while keeping humans in control and respecting data protection principles
-(GDPR / RODO).
+This project is designed as a **modular skeleton** for automated customer handling,
+covering the full journey from first inquiry to follow-ups and sales support.
+Artificial Intelligence is introduced gradually and deliberately — not by default.
 
-## Project goal
+---
 
-The main goal is to reduce manual work in the first stage of sales by:
-- collecting inquiries from multiple sources in one place,
-- sending immediate, professional auto-replies,
-- preparing the ground for scheduling meetings,
-- without automating pricing or decision-making.
+## Why this project exists
+
+Many sales processes fail not because of a lack of AI, but because of:
+- fragmented communication channels,
+- unclear data ownership,
+- manual and error-prone first responses,
+- missing structure for future automation.
+
+Before adding intelligence, sales operations need a **reliable, auditable
+and privacy-conscious automation layer**.
+
+This project provides exactly that layer.
+
+---
+
+## Core idea
+
+**ai-sales-automation is not an AI assistant.**
+
+It is a **system-level foundation** that:
+- defines how data enters the system,
+- controls how and where it is stored,
+- orchestrates sales-related workflows,
+- enforces privacy and human oversight,
+- enables safe introduction of AI at later stages.
+
+AI is treated as an **optional capability**, not as the core of the system.
+
+---
+
+## Architecture principles
+
+- **Automation-first, AI-second**  
+  Workflows and data boundaries come before intelligence.
+
+- **Stage-based evolution**  
+  Each stage delivers independent business value and can be stopped or extended.
+
+- **Privacy by design (GDPR / RODO)**  
+  Minimal data processing, clear purposes, easy deletion, no hidden flows.
+
+- **Human-in-the-loop by default**  
+  No automated pricing, offers or decisions.
+
+- **Python-first, transparent design**  
+  No black-box platforms, no vendor lock-in.
+
+---
+
+## Project stages
+
+### Stage 0 – Foundation (no AI)
+- inquiry intake from multiple channels (via email as a stable entry point),
+- minimal lead storage,
+- automatic confirmation email,
+- optional calendar scheduling via external links,
+- zero AI involvement.
+
+This stage focuses purely on **operational reliability and speed**.
+
+---
+
+### Stage 1 – Structured automation
+- lead categorization,
+- follow-ups,
+- contact history,
+- basic prioritization rules.
+
+AI may be introduced optionally as a helper, not a decision-maker.
+
+---
+
+### Stage 2 – AI-assisted sales support
+- AI-generated draft responses,
+- information extraction from inquiries,
+- always reviewed and approved by a human.
+
+---
+
+### Stage 3 – Advanced automation (optional)
+- analytics,
+- optimization of workflows,
+- extended AI support for internal decision-making.
+
+---
 
 ## What this project IS
 
-- a modular, Python-first automation framework
-- designed for real business use, not demos
-- privacy-first by design (data minimization, easy deletion)
-- suitable for gradual, stage-based development
-- portfolio-grade architecture
+- a reusable sales automation framework
+- a system-level foundation for AI-enabled sales tools
+- a privacy-first architecture example
+- a real-world, portfolio-grade project
 
 ## What this project IS NOT
 
 - a CRM system
-- a fully autonomous AI sales agent
-- a system that generates prices or binding offers
-- a repository containing real client data or credentials
+- a chatbot
+- an autonomous AI sales agent
+- a repository containing real customer data or credentials
 
-## Privacy-first approach
+---
 
-This repository contains:
-- core logic
-- data models
-- example workflows
-- example configuration
+## Privacy and data handling
 
-It does NOT contain:
-- real customer data
-- production credentials
-- email inboxes
-- calendar accounts
+This repository contains **no real customer data** and **no production secrets**.
 
-All sensitive data is expected to be provided via environment variables
-or external configuration and never committed to the repository.
+All sensitive information is expected to be provided externally via environment
+variables or deployment-specific configuration and is never committed to version
+control.
 
-## Project stages
+The system is designed so that customer data can be:
+- minimized by default,
+- easily inspected,
+- easily removed.
 
-- **Stage 0** – Lead intake, minimal storage, auto-reply, calendar link  
-- **Stage 1** – Lead categorization, follow-ups, contact history  
-- **Stage 2** – AI-assisted draft responses (human-approved)  
-- **Stage 3** – Advanced automation and analytics (optional)
+---
 
-Only Stage 0 is implemented as the initial foundation.
-Further stages are intentionally planned, not rushed.
-
-## Tech stack (initial)
+## Technology (initial)
 
 - Python 3.11+
-- Pydantic
-- SQLite or Google Sheets (as simple storage options)
-- SMTP / email API for notifications
+- Pydantic for data validation
+- SQLite or Google Sheets as lightweight storage options
+- Email-based ingestion as a stable and auditable integration layer
+
+---
 
 ## Status
 
 This project is under active, iterative development.
+It serves both as a production-ready foundation and as a long-term portfolio project.
