@@ -17,7 +17,7 @@ Many sales processes fail not because of a lack of AI, but because of:
 - manual and error-prone first responses,
 - missing structure for future automation.
 
-Before adding intelligence, sales operations need a **reliable, auditable
+Before adding intelligence, sales operations need a **reliable, auditable,
 and privacy-conscious automation layer**.
 
 This project provides exactly that layer.
@@ -30,7 +30,6 @@ This project provides exactly that layer.
 
 It is a **system-level foundation** that:
 - defines how data enters the system,
-- controls how and where it is stored,
 - orchestrates sales-related workflows,
 - enforces privacy and human oversight,
 - enables safe introduction of AI at later stages.
@@ -60,35 +59,37 @@ AI is treated as an **optional capability**, not as the core of the system.
 
 ## Project stages
 
-### Stage 0 – Foundation (no AI)
-- inquiry intake from multiple channels (via email as a stable entry point),
-- minimal lead storage,
-- automatic confirmation email,
-- optional calendar scheduling via external links,
-- zero AI involvement.
+### Stage 0 — Foundation (no AI)
 
-This stage focuses purely on **operational reliability and speed**.
+Stage 0 delivers the minimum viable automation layer:
+- a single, well-defined lead intake channel,
+- immediate automated confirmation response,
+- lightweight status tracking in the source of truth,
+- human-controlled follow-up markers.
+
+The concrete Stage 0 specification (binding scope, data schema, and run commands)
+lives in `docs/stage0.md`.
 
 ---
 
-### Stage 1 – Structured automation
-- lead categorization,
-- follow-ups,
+### Stage 1 — Structured automation
+- structured lead categorization,
 - contact history,
+- follow-up workflows,
 - basic prioritization rules.
 
 AI may be introduced optionally as a helper, not a decision-maker.
 
 ---
 
-### Stage 2 – AI-assisted sales support
+### Stage 2 — AI-assisted sales support
 - AI-generated draft responses,
 - information extraction from inquiries,
 - always reviewed and approved by a human.
 
 ---
 
-### Stage 3 – Advanced automation (optional)
+### Stage 3 — Advanced automation (optional)
 - analytics,
 - optimization of workflows,
 - extended AI support for internal decision-making.
@@ -129,9 +130,9 @@ The system is designed so that customer data can be:
 ## Technology (initial)
 
 - Python 3.11+
+- Google Sheets as a lightweight source of truth and status board
+- SMTP for outbound email delivery
 - Pydantic for data validation
-- SQLite or Google Sheets as lightweight storage options
-- Email-based ingestion as a stable and auditable integration layer
 
 ---
 
