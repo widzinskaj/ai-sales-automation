@@ -23,6 +23,8 @@ assets/attachments/
 # IDE
 .vscode/
 .idea/
+.venv/
+
 
 # OS
 .DS_Store
