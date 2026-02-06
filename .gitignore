@@ -3,14 +3,22 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+
+# Environment
 .env
 .env.*
 
-# Local data
+# Secrets & credentials
+secrets/
+
+# Local data / customer data
 data/
 *.db
 *.sqlite
 *.log
+
+# Attachments (PDFs sent to leads)
+assets/attachments/
 
 # IDE
 .vscode/
@@ -18,3 +26,6 @@ data/
 
 # OS
 .DS_Store
+
+# AI tooling (local only)
+CLAUDE.md
