@@ -135,6 +135,40 @@ The system is designed so that customer data can be:
 
 ---
 
+## Stage 0 Quickstart
+
+```bash
+# 1. Clone and set up
+git clone <repo-url> && cd ai-sales-automation
+python -m venv .venv
+source .venv/bin/activate        # Linux/macOS
+.venv\Scripts\activate           # Windows
+pip install -r requirements.txt
+
+# 2. Configure environment
+cp .env.example .env
+# Fill in GOOGLE_SHEET_ID, SMTP_*, CALENDAR_LINK, SMTP_FROM_EMAIL/NAME
+
+# 3. Add Google Cloud service account key
+# Place the JSON key file at secrets/service_account.json
+# (secrets/ is gitignored — never commit credentials)
+
+# 4. Add PDF attachments
+# Place 3 PDF files in assets/attachments/ and update
+# ATTACHMENT_A/B/C paths in .env if names differ from defaults
+# (assets/attachments/ is gitignored)
+
+# 5. Process new leads (send auto-reply emails)
+python -m workflows.stage0.run_once
+
+# 6. Mark leads awaiting follow-up (3+ days since auto-reply)
+python -m workflows.stage0.mark_followups
+```
+
+See `docs/stage0.md` for the full binding specification.
+
+---
+
 ## Status
 
 This project is under active, iterative development.
