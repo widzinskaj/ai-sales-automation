@@ -31,3 +31,5 @@ assets/attachments/
 
 # AI tooling (local only)
 CLAUDE.md
+.claude/
+
