@@ -23,10 +23,10 @@ sheet — it never calls the Meta API directly.
 | `campaign` | string | Meta | Campaign or ad set name |
 | `message` | string | Meta | Free-text from the form (optional). Stored but ignored by Stage 0 logic. |
 | `sales_note` | string | Human | Manual note / qualification by salesperson. Never overwritten by the system. |
-| `auto_email_sent_at` | ISO 8601 datetime | System | Timestamp when auto-reply was sent |
+| `auto_email_sent_at` | datetime | System | Timestamp when auto-reply was sent (Europe/Warsaw, `YYYY-MM-DD HH:MM`) |
 | `auto_email_status` | string | System | `OK` or `ERROR: <short description>` |
-| `followup_due_at` | ISO 8601 datetime | System | Computed as `auto_email_sent_at + 3 days` |
-| `followup_required` | boolean | System | Set to `TRUE` when `followup_due_at` has passed |
+| `followup_due_at` | datetime | System | Computed as `auto_email_sent_at + 3 days` (Europe/Warsaw, `YYYY-MM-DD HH:MM`) |
+| `followup_required` | string | System | `YES` when `followup_due_at` has passed, otherwise `NO` |
 
 ### Idempotency
 
@@ -52,15 +52,16 @@ Google Sheets (new row via Meta Instant Forms integration)
         │
         ▼
   Update row: set auto_email_sent_at, auto_email_status,
-              compute followup_due_at (sent_at + 3 days)
+              compute followup_due_at (sent_at + 3 days),
+              followup_required = NO
         │
         ▼
   python -m workflows.stage0.mark_followups
   Check rows where followup_due_at has passed
-  and followup_required is not TRUE
+  and followup_required is not YES
         │
         ▼
-  Update row: set followup_required → TRUE
+  Update row: set followup_required → YES
 ```
 
 **No follow-up email is sent.** The flag is informational — a human decides
@@ -72,8 +73,8 @@ what to do next.
 
 Each auto-reply contains:
 
-1. A short, fixed plain-text/HTML body (no dynamic content beyond the lead's name).
-2. Three PDF attachments stored locally in a configurable directory (e.g. `assets/`).
+1. A short, fixed plain-text body in Polish (no dynamic content beyond the lead's name).
+2. Three PDF attachments stored locally in `assets/attachments/`.
 3. A calendar booking link from the `CALENDAR_LINK` environment variable.
 
 The system uses SMTP for sending. No inbound email parsing.
@@ -125,7 +126,7 @@ cp .env.example .env
 # Fill in SMTP_*, CALENDAR_LINK, and Google Sheets credentials
 
 # 5. Place PDF attachments
-# Put the 3 PDF files in assets/ (path is configurable)
+# Put the 3 PDF files in assets/attachments/
 
 # 6. Process new leads and send auto-replies
 python -m workflows.stage0.run_once

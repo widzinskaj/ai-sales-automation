@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from core.lead_helpers import (
-    followup_due_iso,
+    WARSAW_TZ,
+    followup_due_formatted,
     is_followup_due,
     is_new_lead,
-    utc_now_iso,
+    to_vocative_first_name,
+    warsaw_now_formatted,
 )
+from integrations.email_sender import build_greeting
 
 
 # ------------------------------------------------------------------
@@ -22,7 +26,7 @@ class TestIsNewLead:
         assert is_new_lead(row) is True
 
     def test_already_processed(self):
-        row = {"email": "x@example.com", "auto_email_sent_at": "2025-01-01T00:00:00+00:00"}
+        row = {"email": "x@example.com", "auto_email_sent_at": "2025-01-01 10:00"}
         assert is_new_lead(row) is False
 
     def test_missing_email(self):
@@ -42,39 +46,38 @@ class TestIsNewLead:
 
 
 # ------------------------------------------------------------------
-# utc_now_iso
+# warsaw_now_formatted
 # ------------------------------------------------------------------
 
-class TestUtcNowIso:
-    def test_format_is_valid_iso(self):
-        result = utc_now_iso()
-        parsed = datetime.fromisoformat(result)
-        assert parsed.tzinfo is not None
+class TestWarsawNowFormatted:
+    def test_format_yyyy_mm_dd_hh_mm(self):
+        result = warsaw_now_formatted()
+        # Should match YYYY-MM-DD HH:MM (16 chars)
+        assert len(result) == 16
+        parsed = datetime.strptime(result, "%Y-%m-%d %H:%M")
+        assert parsed is not None
 
-    def test_no_microseconds(self):
-        result = utc_now_iso()
-        assert "." not in result
+    def test_no_seconds(self):
+        result = warsaw_now_formatted()
+        # Exactly two colons would mean seconds are present; we expect one.
+        assert result.count(":") == 1
 
 
 # ------------------------------------------------------------------
-# followup_due_iso
+# followup_due_formatted
 # ------------------------------------------------------------------
 
-class TestFollowupDueIso:
+class TestFollowupDueFormatted:
     def test_adds_three_days(self):
-        sent = "2025-06-01T12:00:00+00:00"
-        due = followup_due_iso(sent)
-        assert due == "2025-06-04T12:00:00+00:00"
+        assert followup_due_formatted("2025-06-01 12:00") == "2025-06-04 12:00"
 
     def test_custom_days(self):
-        sent = "2025-06-01T12:00:00+00:00"
-        due = followup_due_iso(sent, days=7)
-        assert due == "2025-06-08T12:00:00+00:00"
+        assert followup_due_formatted("2025-06-01 12:00", days=7) == "2025-06-08 12:00"
 
-    def test_no_microseconds(self):
-        sent = "2025-06-01T12:00:00.123456+00:00"
-        due = followup_due_iso(sent)
-        assert "." not in due
+    def test_format_preserved(self):
+        result = followup_due_formatted("2025-12-30 23:45")
+        assert len(result) == 16
+        assert result.count(":") == 1
 
 
 # ------------------------------------------------------------------
@@ -82,19 +85,22 @@ class TestFollowupDueIso:
 # ------------------------------------------------------------------
 
 class TestIsFollowupDue:
+    def _past(self, hours: int = 1) -> str:
+        return (datetime.now(WARSAW_TZ) - timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M")
+
+    def _future(self, days: int = 1) -> str:
+        return (datetime.now(WARSAW_TZ) + timedelta(days=days)).strftime("%Y-%m-%d %H:%M")
+
     def test_due_in_past_not_yet_marked(self):
-        past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
-        row = {"followup_due_at": past, "followup_required": ""}
+        row = {"followup_due_at": self._past(), "followup_required": ""}
         assert is_followup_due(row) is True
 
     def test_due_in_future(self):
-        future = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
-        row = {"followup_due_at": future, "followup_required": ""}
+        row = {"followup_due_at": self._future(), "followup_required": ""}
         assert is_followup_due(row) is False
 
-    def test_already_marked_true(self):
-        past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
-        row = {"followup_due_at": past, "followup_required": "TRUE"}
+    def test_already_marked_yes(self):
+        row = {"followup_due_at": self._past(), "followup_required": "YES"}
         assert is_followup_due(row) is False
 
     def test_empty_due_at(self):
@@ -104,7 +110,61 @@ class TestIsFollowupDue:
     def test_missing_keys(self):
         assert is_followup_due({}) is False
 
-    def test_case_insensitive_true(self):
-        past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
-        row = {"followup_due_at": past, "followup_required": "true"}
+    def test_case_insensitive_yes(self):
+        row = {"followup_due_at": self._past(), "followup_required": "yes"}
         assert is_followup_due(row) is False
+
+    def test_no_value_not_blocking(self):
+        row = {"followup_due_at": self._past(), "followup_required": "NO"}
+        assert is_followup_due(row) is True
+
+
+# ------------------------------------------------------------------
+# to_vocative_first_name
+# ------------------------------------------------------------------
+
+class TestToVocativeFirstName:
+    def test_anna(self):
+        assert to_vocative_first_name("Anna") == "Anno"
+
+    def test_marek(self):
+        assert to_vocative_first_name("Marek") == "Marku"
+
+    def test_kuba(self):
+        assert to_vocative_first_name("Kuba") == "Kubo"
+
+    def test_agnieszka(self):
+        assert to_vocative_first_name("Agnieszka") == "Agnieszko"
+
+    def test_tomasz(self):
+        assert to_vocative_first_name("Tomasz") == "Tomaszu"
+
+    def test_unknown_returns_none(self):
+        assert to_vocative_first_name("Xyzabc123") is None
+
+    def test_empty_returns_none(self):
+        assert to_vocative_first_name("") is None
+
+
+# ------------------------------------------------------------------
+# build_greeting (vocative, end-to-end)
+# ------------------------------------------------------------------
+
+class TestBuildGreeting:
+    def test_feminine_vocative(self):
+        assert build_greeting("Anna Kowalska") == "Dzień dobry, Pani Anno,"
+
+    def test_masculine_vocative(self):
+        assert build_greeting("Marek Nowak") == "Dzień dobry, Panie Marku,"
+
+    def test_masculine_exception_vocative(self):
+        assert build_greeting("Kuba Wiśniewski") == "Dzień dobry, Panie Kubo,"
+
+    def test_unknown_name_fallback(self):
+        assert build_greeting("Xyzabc Qwerty") == "Dzień dobry,"
+
+    def test_empty_name(self):
+        assert build_greeting("") == "Dzień dobry,"
+
+    def test_none_name(self):
+        assert build_greeting(None) == "Dzień dobry,"

@@ -9,6 +9,8 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
 
+from core.lead_helpers import to_vocative_first_name
+
 logger = logging.getLogger(__name__)
 
 
@@ -38,28 +40,30 @@ def guess_gender(first_name: str) -> str | None:
         return "m"
     if name.endswith("a"):
         return "f"
-    # Most Polish masculine names don't end with 'a'.
-    # But foreign / ambiguous names may slip through — return 'm' only
-    # when the name clearly looks non-feminine.
     if name[-1] in "bcdefghijklmnoprstuvwxyz":
         return "m"
     return None
 
 
-def build_greeting(full_name: str) -> str:
-    """Polish greeting with Pani/Panie honorific.
+def build_greeting(full_name: str | None) -> str:
+    """Polish greeting with Pani/Panie honorific in vocative case.
 
-    Returns 'Dzień dobry, Pani {Imię},' / 'Dzień dobry, Panie {Imię},'
-    when gender can be inferred, otherwise 'Dzień dobry,'.
+    Returns 'Dzień dobry, Pani {wołacz},' / 'Dzień dobry, Panie {wołacz},'
+    when vocative and gender can be determined, otherwise 'Dzień dobry,'.
     """
+    if not full_name:
+        return "Dzień dobry,"
     first = extract_first_name(full_name)
     if not first:
         return "Dzień dobry,"
+    vocative = to_vocative_first_name(first)
+    if not vocative:
+        return "Dzień dobry,"
     gender = guess_gender(first)
     if gender == "f":
-        return f"Dzień dobry, Pani {first},"
+        return f"Dzień dobry, Pani {vocative},"
     if gender == "m":
-        return f"Dzień dobry, Panie {first},"
+        return f"Dzień dobry, Panie {vocative},"
     return "Dzień dobry,"
 
 
