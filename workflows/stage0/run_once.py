@@ -21,6 +21,48 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def process_lead_row(
+    row: dict[str, str],
+    row_number: int,
+    sheets: SheetsClient,
+    attachment_paths: list[str],
+) -> bool:
+    """Process a single new lead: send auto-reply and update the sheet.
+
+    Returns True on success, False on failure.
+    """
+    lead_id = row.get("lead_id", "?")
+    logger.info("Processing lead_id=%s (row %d)", lead_id, row_number)
+
+    try:
+        send_auto_reply(
+            smtp_host=config.SMTP_HOST,
+            smtp_port=config.SMTP_PORT,
+            smtp_user=config.SMTP_USER,
+            smtp_pass=config.SMTP_PASS,
+            from_email=config.SMTP_FROM_EMAIL,
+            from_name=config.SMTP_FROM_NAME,
+            to_email=row["email"],
+            full_name=row.get("full_name", ""),
+            calendar_link=config.CALENDAR_LINK,
+            attachment_paths=attachment_paths,
+        )
+    except Exception as exc:
+        error_msg = str(exc)[:120]
+        logger.error("Failed to send email for lead_id=%s: %s", lead_id, error_msg)
+        sheets.update_row(row_number, {"auto_email_status": f"ERROR: {error_msg}"})
+        return False
+
+    sent_at = warsaw_now_formatted()
+    sheets.update_row(row_number, {
+        "auto_email_sent_at": sent_at,
+        "auto_email_status": "OK",
+        "followup_due_at": followup_due_formatted(sent_at),
+        "followup_required": "NO",
+    })
+    return True
+
+
 def main() -> None:
     logger.info("run_once: starting (env=%s)", config.APP_ENV)
 
@@ -44,36 +86,8 @@ def main() -> None:
         if not is_new_lead(row):
             continue
 
-        lead_id = row.get("lead_id", "?")
-        logger.info("Processing lead_id=%s (row %d)", lead_id, row_number)
-
-        try:
-            send_auto_reply(
-                smtp_host=config.SMTP_HOST,
-                smtp_port=config.SMTP_PORT,
-                smtp_user=config.SMTP_USER,
-                smtp_pass=config.SMTP_PASS,
-                from_email=config.SMTP_FROM_EMAIL,
-                from_name=config.SMTP_FROM_NAME,
-                to_email=row["email"],
-                full_name=row.get("full_name", ""),
-                calendar_link=config.CALENDAR_LINK,
-                attachment_paths=attachment_paths,
-            )
-        except Exception as exc:
-            error_msg = str(exc)[:120]
-            logger.error("Failed to send email for lead_id=%s: %s", lead_id, error_msg)
-            sheets.update_row(row_number, {"auto_email_status": f"ERROR: {error_msg}"})
-            continue
-
-        sent_at = warsaw_now_formatted()
-        sheets.update_row(row_number, {
-            "auto_email_sent_at": sent_at,
-            "auto_email_status": "OK",
-            "followup_due_at": followup_due_formatted(sent_at),
-            "followup_required": "NO",
-        })
-        processed += 1
+        if process_lead_row(row, row_number, sheets, attachment_paths):
+            processed += 1
 
     logger.info("run_once: done — %d lead(s) processed", processed)
 
