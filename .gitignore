@@ -29,3 +29,8 @@ assets/attachments/
 
 # AI tooling (local only)
 CLAUDE.md
+
+# Local dev / AI tooling
+.venv/
+.claude/
+
