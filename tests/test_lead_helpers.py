@@ -1,8 +1,9 @@
-"""Unit tests for core.lead_helpers — no network required."""
+"""Unit tests for core.lead_helpers and workflow orchestration — no network required."""
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
 from core.lead_helpers import (
@@ -14,6 +15,7 @@ from core.lead_helpers import (
     warsaw_now_formatted,
 )
 from integrations.email_sender import build_greeting
+from workflows.stage0.run_once import process_lead_row
 
 
 # ------------------------------------------------------------------
@@ -168,3 +170,59 @@ class TestBuildGreeting:
 
     def test_none_name(self):
         assert build_greeting(None) == "Dzień dobry,"
+
+
+# ------------------------------------------------------------------
+# process_lead_row — SMTP failure path
+# ------------------------------------------------------------------
+
+class TestProcessLeadRowSmtpFailure:
+    """Verify that an SMTP error writes ERROR status and leaves the lead retryable."""
+
+    _ROW = {
+        "lead_id": "test-123",
+        "email": "x@example.com",
+        "full_name": "Anna Kowalska",
+        "auto_email_sent_at": "",
+    }
+
+    @patch("workflows.stage0.run_once.send_auto_reply", side_effect=RuntimeError("SMTP down"))
+    def test_sets_error_status(self, _mock_send: MagicMock) -> None:
+        spy = MagicMock()
+        result = process_lead_row(self._ROW, row_number=2, sheets=spy, attachment_paths=[])
+
+        assert result is False
+        spy.update_row.assert_called_once()
+        _, kwargs = spy.update_row.call_args
+        updates = kwargs.get("updates") or spy.update_row.call_args[0][1]
+        assert "auto_email_status" in updates
+        assert updates["auto_email_status"].startswith("ERROR:")
+        assert "SMTP down" in updates["auto_email_status"]
+
+    @patch("workflows.stage0.run_once.send_auto_reply", side_effect=RuntimeError("SMTP down"))
+    def test_does_not_set_sent_at(self, _mock_send: MagicMock) -> None:
+        spy = MagicMock()
+        process_lead_row(self._ROW, row_number=2, sheets=spy, attachment_paths=[])
+
+        updates = spy.update_row.call_args[0][1]
+        assert "auto_email_sent_at" not in updates
+
+    @patch("workflows.stage0.run_once.send_auto_reply", side_effect=RuntimeError("SMTP down"))
+    def test_lead_remains_retryable(self, _mock_send: MagicMock) -> None:
+        spy = MagicMock()
+        process_lead_row(self._ROW, row_number=2, sheets=spy, attachment_paths=[])
+
+        # auto_email_sent_at was not written, so the lead stays new.
+        assert is_new_lead(self._ROW) is True
+
+    @patch("workflows.stage0.run_once.send_auto_reply")
+    def test_success_path_sets_all_fields(self, _mock_send: MagicMock) -> None:
+        spy = MagicMock()
+        result = process_lead_row(self._ROW, row_number=2, sheets=spy, attachment_paths=[])
+
+        assert result is True
+        updates = spy.update_row.call_args[0][1]
+        assert updates["auto_email_status"] == "OK"
+        assert "auto_email_sent_at" in updates
+        assert "followup_due_at" in updates
+        assert updates["followup_required"] == "NO"
