@@ -23,9 +23,13 @@ assets/attachments/
 # IDE
 .vscode/
 .idea/
+.venv/
+
 
 # OS
 .DS_Store
 
 # AI tooling (local only)
 CLAUDE.md
+.claude/
+
