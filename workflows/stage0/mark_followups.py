@@ -42,7 +42,7 @@ def main() -> None:
 
         lead_id = row.get("lead_id", "?")
         logger.info("Marking follow-up for lead_id=%s (row %d)", lead_id, row_number)
-        sheets.update_row(row_number, {"followup_required": "TRUE"})
+        sheets.update_row(row_number, {"followup_required": "YES"})
         marked += 1
 
     logger.info("mark_followups: done — %d lead(s) marked", marked)

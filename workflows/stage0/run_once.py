@@ -10,7 +10,7 @@ import logging
 import sys
 
 from core import config
-from core.lead_helpers import followup_due_iso, is_new_lead, utc_now_iso
+from core.lead_helpers import followup_due_formatted, is_new_lead, warsaw_now_formatted
 from integrations.email_sender import send_auto_reply
 from storage.sheets import SheetsClient
 
@@ -29,6 +29,9 @@ def main() -> None:
         sheet_id=config.GOOGLE_SHEET_ID,
         tab_name=config.GOOGLE_SHEET_TAB,
     )
+
+    # Apply date formatting once per run (idempotent).
+    sheets.ensure_date_column_format()
 
     attachment_paths = [config.ATTACHMENT_A, config.ATTACHMENT_B, config.ATTACHMENT_C]
     rows = sheets.get_all_rows()
@@ -63,12 +66,12 @@ def main() -> None:
             sheets.update_row(row_number, {"auto_email_status": f"ERROR: {error_msg}"})
             continue
 
-        sent_at = utc_now_iso()
+        sent_at = warsaw_now_formatted()
         sheets.update_row(row_number, {
             "auto_email_sent_at": sent_at,
             "auto_email_status": "OK",
-            "followup_due_at": followup_due_iso(sent_at),
-            "followup_required": "FALSE",
+            "followup_due_at": followup_due_formatted(sent_at),
+            "followup_required": "NO",
         })
         processed += 1
 

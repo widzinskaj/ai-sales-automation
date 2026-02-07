@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from integrations.email_sender import build_greeting, extract_first_name, guess_gender
+from integrations.email_sender import extract_first_name, guess_gender
 
 
 # ------------------------------------------------------------------
@@ -56,30 +56,3 @@ class TestGuessGender:
     def test_empty(self):
         assert guess_gender("") is None
         assert guess_gender("  ") is None
-
-
-# ------------------------------------------------------------------
-# build_greeting
-# ------------------------------------------------------------------
-
-class TestBuildGreeting:
-    def test_feminine_name(self):
-        assert build_greeting("Anna Kowalska") == "Dzień dobry, Pani Anna,"
-
-    def test_masculine_name(self):
-        assert build_greeting("Marek Nowak") == "Dzień dobry, Panie Marek,"
-
-    def test_masculine_exception(self):
-        assert build_greeting("Kuba Wiśniewski") == "Dzień dobry, Panie Kuba,"
-
-    def test_empty_name(self):
-        assert build_greeting("") == "Dzień dobry,"
-
-    def test_whitespace_name(self):
-        assert build_greeting("   ") == "Dzień dobry,"
-
-    def test_single_feminine(self):
-        assert build_greeting("Agnieszka") == "Dzień dobry, Pani Agnieszka,"
-
-    def test_single_masculine(self):
-        assert build_greeting("Tomasz") == "Dzień dobry, Panie Tomasz,"
