@@ -100,40 +100,62 @@ class SheetsClient:
         return [{k: str(v) for k, v in row.items()} for row in records]
 
 
-def get_status_index_by_email(self) -> dict[str, dict[str, str]]:
-    """Map: email -> status row dict (email normalized)."""
-    rows = self.read_status_rows()
-    mapping: dict[str, dict[str, str]] = {}
+    def get_status_index_by_email(self) -> dict[str, dict[str, str]]:
+        """Map: email -> status row dict (email normalized)."""
+        rows = self.read_status_rows()
+        mapping: dict[str, dict[str, str]] = {}
 
-    for row in rows:
-        email = str(row.get("email", "")).strip().lower()
-        if not email:
-            continue
-        mapping[email] = row
+        for row in rows:
+            email = str(row.get("email", "")).strip().lower()
+            if not email:
+                continue
+            mapping[email] = row
 
-    return mapping
+        return mapping
 
-def get_new_leads(self) -> list[dict[str, str]]:
-    """Return input rows that are new or not yet emailed (idempotent)."""
-    input_rows = self.read_input_rows()
-    status_index = self.get_status_index_by_email()
+    def get_new_leads(self) -> list[dict[str, str]]:
+        """Return input rows that are new or not yet emailed (idempotent)."""
+        input_rows = self.read_input_rows()
+        status_index = self.get_status_index_by_email()
 
-    new_rows: list[dict[str, str]] = []
-    for row in input_rows:
-        email = str(row.get("Email", "")).strip().lower()
-        if not email:
-            continue
+        new_rows: list[dict[str, str]] = []
+        for row in input_rows:
+            email = str(row.get("Email", "")).strip().lower()
+            if not email:
+                continue
 
-        status_row = status_index.get(email)
-        sent_at = "" if not status_row else str(status_row.get("auto_email_sent_at", "")).strip()
+            status_row = status_index.get(email)
+            sent_at = "" if not status_row else str(status_row.get("auto_email_sent_at", "")).strip()
 
-        # new = missing in status OR not sent yet
-        if (status_row is None) or (sent_at == ""):
-            new_rows.append(row)
+            # new = missing in status OR not sent yet
+            if (status_row is None) or (sent_at == ""):
+                new_rows.append(row)
 
-    return new_rows
+        return new_rows
 
+    def ensure_status_rows_exist(self) -> None:
+        """Ensure every input email has a row in status sheet."""
+        input_rows = self.read_input_rows()
+        status_index = self.get_status_index_by_email()
 
+        for row in input_rows:
+            email = str(row.get("Email", "")).strip().lower()
+            if not email:
+                continue
+
+            if email not in status_index:
+                # append new status row
+                self._ws_status.append_row(
+                    [
+                        email,  # email
+                        "",     # auto_email_sent_at
+                        "",     # auto_email_status
+                        "",     # followup_due_at
+                        "",     # followup_required
+                        "",     # followup_completed_at
+                    ],
+                    value_input_option="USER_ENTERED",
+                )
 
     # ------------------------------------------------------------------
     # Write (only system columns, USER_ENTERED)
