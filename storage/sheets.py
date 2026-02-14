@@ -3,17 +3,20 @@
 from __future__ import annotations
 from core.config import GOOGLE_SHEET_TAB_INPUT, GOOGLE_SHEET_TAB_STATUS
 
-INPUT_HEADERS = [...]
-INPUT_HEADERS = [...]
-INPUT_HEADERS = [...]
+INPUT_HEADERS = [
+    "Imię i nazwisko / Firma",
+    "Email",
+    "Telefon dodatkowy",
+]
 
-STATUS_HEADERS = [...]
-STATUS_HEADERS = [...]
-STATUS_HEADERS = [...]
-STATUS_HEADERS = [...]
-STATUS_HEADERS = [...]
-STATUS_HEADERS = [...]
-
+STATUS_HEADERS = [
+    "email",
+    "auto_email_sent_at",
+    "auto_email_status",
+    "followup_due_at",
+    "followup_required",
+    "followup_completed_at",
+]
 
 
 import logging
@@ -68,10 +71,69 @@ class SheetsClient:
     # Read
     # ------------------------------------------------------------------
 
+    def read_input_rows(self) -> list[dict[str, str]]:
+        """Return all non-empty input rows with normalized email."""
+        records = self._ws_input.get_all_records(head=1, default_blank="")
+
+        cleaned_rows: list[dict[str, str]] = []
+
+        for row in records:
+            email = str(row.get("Email", "")).strip().lower()
+
+            if not email:
+                continue  # skip empty rows
+
+            row["Email"] = email
+            cleaned_rows.append({k: str(v) for k, v in row.items()})
+
+        return cleaned_rows
+
+
     def get_all_rows(self) -> list[dict[str, str]]:
         """Return every data row as a dict keyed by header name."""
         records = self._ws_status.get_all_records(head=1, default_blank="")
         return [{k: str(v) for k, v in row.items()} for row in records]
+    
+    def read_status_rows(self) -> list[dict[str, str]]:
+        """Return every status row as a dict keyed by header name."""
+        records = self._ws_status.get_all_records(head=1, default_blank="")
+        return [{k: str(v) for k, v in row.items()} for row in records]
+
+
+def get_status_index_by_email(self) -> dict[str, dict[str, str]]:
+    """Map: email -> status row dict (email normalized)."""
+    rows = self.read_status_rows()
+    mapping: dict[str, dict[str, str]] = {}
+
+    for row in rows:
+        email = str(row.get("email", "")).strip().lower()
+        if not email:
+            continue
+        mapping[email] = row
+
+    return mapping
+
+def get_new_leads(self) -> list[dict[str, str]]:
+    """Return input rows that are new or not yet emailed (idempotent)."""
+    input_rows = self.read_input_rows()
+    status_index = self.get_status_index_by_email()
+
+    new_rows: list[dict[str, str]] = []
+    for row in input_rows:
+        email = str(row.get("Email", "")).strip().lower()
+        if not email:
+            continue
+
+        status_row = status_index.get(email)
+        sent_at = "" if not status_row else str(status_row.get("auto_email_sent_at", "")).strip()
+
+        # new = missing in status OR not sent yet
+        if (status_row is None) or (sent_at == ""):
+            new_rows.append(row)
+
+    return new_rows
+
+
 
     # ------------------------------------------------------------------
     # Write (only system columns, USER_ENTERED)
@@ -149,3 +211,14 @@ class SheetsClient:
             return self._headers_status.index(col_name) + 1
         except ValueError:
             raise KeyError(f"Column '{col_name}' not found in sheet headers: {self._headers_status}")
+            
+    def _validate_headers(self, actual: list[str], expected: list[str], tab_name: str) -> None:
+        actual_clean = [h.strip() for h in actual if h is not None]
+        expected_clean = [h.strip() for h in expected]
+
+        if actual_clean != expected_clean:
+            raise RuntimeError(
+                f"Invalid headers in tab '{tab_name}'. "
+                f"Expected: {expected_clean}. Got: {actual_clean}."
+            )
+
