@@ -22,7 +22,15 @@ def _require(key: str) -> str:
 
 # Google Sheets
 GOOGLE_SHEET_ID: str = _require("GOOGLE_SHEET_ID")
-GOOGLE_SHEET_TAB: str = os.getenv("GOOGLE_SHEET_TAB", "leads").strip()
+GOOGLE_SHEET_TAB_INPUT: str = os.getenv("GOOGLE_SHEET_TAB_INPUT", "").strip()
+GOOGLE_SHEET_TAB_STATUS: str = os.getenv("GOOGLE_SHEET_TAB_STATUS", "").strip()
+
+if not GOOGLE_SHEET_TAB_INPUT:
+    raise RuntimeError("Missing required env variable: GOOGLE_SHEET_TAB_INPUT")
+
+if not GOOGLE_SHEET_TAB_STATUS:
+    raise RuntimeError("Missing required env variable: GOOGLE_SHEET_TAB_STATUS")
+
 GOOGLE_SERVICE_ACCOUNT_JSON: str = _require("GOOGLE_SERVICE_ACCOUNT_JSON")
 
 # SMTP
