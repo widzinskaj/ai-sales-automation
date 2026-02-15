@@ -44,7 +44,7 @@ def process_lead_row(
             from_name=config.SMTP_FROM_NAME,
             to_email=row["email"],
             full_name=row.get("full_name", ""),
-            calendar_link=config.CALENDAR_LINK,
+            calendar_url = config.CALENDAR_URL,
             attachment_paths=attachment_paths,
         )
     except Exception as exc:
