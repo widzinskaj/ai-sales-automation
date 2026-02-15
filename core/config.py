@@ -42,11 +42,11 @@ SMTP_FROM_EMAIL: str = _require("SMTP_FROM_EMAIL")
 SMTP_FROM_NAME: str = os.getenv("SMTP_FROM_NAME", "").strip()
 
 # Calendar
-CALENDAR_LINK: str = _require("CALENDAR_LINK")
+CALENDAR_URL: str = _require("CALENDAR_URL")
 
 # Attachments (paths relative to project root)
-ATTACHMENT_A: str = _require("ATTACHMENT_A")
-ATTACHMENT_B: str = _require("ATTACHMENT_B")
-ATTACHMENT_C: str = _require("ATTACHMENT_C")
+STAGE0_PDF_1: str = _require("STAGE0_PDF_1")
+STAGE0_PDF_2: str = _require("STAGE0_PDF_2")
+STAGE0_PDF_3: str = _require("STAGE0_PDF_3")
 
 APP_ENV: str = os.getenv("APP_ENV", "local").strip()
