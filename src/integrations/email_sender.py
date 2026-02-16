@@ -9,7 +9,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
 
-from core.lead_helpers import to_vocative_first_name
+from src.core.lead_helpers import to_vocative_first_name
 
 logger = logging.getLogger(__name__)
 

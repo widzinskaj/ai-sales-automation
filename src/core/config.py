@@ -7,8 +7,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Load .env from project root (two levels up from core/)
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# Load .env from project root (three levels up from src/core/config.py)
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 load_dotenv(_PROJECT_ROOT / ".env")
 
 
@@ -31,6 +31,8 @@ if not GOOGLE_SHEET_TAB_INPUT:
 if not GOOGLE_SHEET_TAB_STATUS:
     raise RuntimeError("Missing required env variable: GOOGLE_SHEET_TAB_STATUS")
 
+GOOGLE_SHEET_TAB: str = GOOGLE_SHEET_TAB_INPUT  # alias used by run_once
+
 GOOGLE_SERVICE_ACCOUNT_JSON: str = _require("GOOGLE_SERVICE_ACCOUNT_JSON")
 
 # SMTP
@@ -48,5 +50,10 @@ CALENDAR_URL: str = _require("CALENDAR_URL")
 STAGE0_PDF_1: str = _require("STAGE0_PDF_1")
 STAGE0_PDF_2: str = _require("STAGE0_PDF_2")
 STAGE0_PDF_3: str = _require("STAGE0_PDF_3")
+
+# Aliases used by run_once (map old names → new STAGE0_PDF_* constants)
+ATTACHMENT_A: str = STAGE0_PDF_1
+ATTACHMENT_B: str = STAGE0_PDF_2
+ATTACHMENT_C: str = STAGE0_PDF_3
 
 APP_ENV: str = os.getenv("APP_ENV", "local").strip()

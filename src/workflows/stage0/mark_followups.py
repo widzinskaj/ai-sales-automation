@@ -3,7 +3,7 @@
 No email is sent. The flag is informational for human review.
 
 Usage:
-    python -m workflows.stage0.mark_followups
+    python -m src.workflows.stage0.mark_followups
 """
 
 from __future__ import annotations
@@ -11,9 +11,9 @@ from __future__ import annotations
 import logging
 import sys
 
-from core import config
-from core.lead_helpers import is_followup_due
-from storage.sheets import SheetsClient
+from src.core import config
+from src.core.lead_helpers import is_followup_due
+from src.storage.sheets import SheetsClient
 
 logging.basicConfig(
     level=logging.INFO,
