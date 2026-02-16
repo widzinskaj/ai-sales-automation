@@ -1,7 +1,7 @@
 """Stage 0 — process new leads and send auto-reply emails.
 
 Usage:
-    python -m workflows.stage0.run_once
+    python -m src.workflows.stage0.run_once
 """
 
 from __future__ import annotations
@@ -9,10 +9,10 @@ from __future__ import annotations
 import logging
 import sys
 
-from core import config
-from core.lead_helpers import followup_due_formatted, is_new_lead, warsaw_now_formatted
-from integrations.email_sender import send_auto_reply
-from storage.sheets import SheetsClient
+from src.core import config
+from src.core.lead_helpers import followup_due_formatted, is_new_lead, warsaw_now_formatted
+from src.integrations.email_sender import send_auto_reply
+from src.storage.sheets import SheetsClient
 
 logging.basicConfig(
     level=logging.INFO,
@@ -44,7 +44,7 @@ def process_lead_row(
             from_name=config.SMTP_FROM_NAME,
             to_email=row["email"],
             full_name=row.get("full_name", ""),
-            calendar_url = config.CALENDAR_URL,
+            calendar_link=config.CALENDAR_URL,
             attachment_paths=attachment_paths,
         )
     except Exception as exc:
