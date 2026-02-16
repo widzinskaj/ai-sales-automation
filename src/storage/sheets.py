@@ -49,7 +49,7 @@ _DATE_NUMBER_FORMAT = {"type": "DATE_TIME", "pattern": "yyyy-mm-dd hh:mm"}
 class SheetsClient:
     """Thin wrapper around gspread for column-name-based access."""
 
-    def __init__(self, service_account_json: str, sheet_id: str) -> None:
+    def __init__(self, service_account_json: str, sheet_id: str, *, tab_name: str | None = None) -> None:
         creds = Credentials.from_service_account_file(service_account_json, scopes=SCOPES)
         gc = gspread.authorize(creds)
         self._spreadsheet = gc.open_by_key(sheet_id)
