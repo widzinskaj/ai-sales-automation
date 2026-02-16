@@ -1,7 +1,7 @@
 """Google Sheets integration — read/write lead rows by column name."""
 
 from __future__ import annotations
-from core.config import GOOGLE_SHEET_TAB_INPUT, GOOGLE_SHEET_TAB_STATUS
+from src.core.config import GOOGLE_SHEET_TAB_INPUT, GOOGLE_SHEET_TAB_STATUS
 
 INPUT_HEADERS = [
     "Imię i nazwisko / Firma",

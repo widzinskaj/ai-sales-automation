@@ -1,5 +1,5 @@
-"""Allow `python -m workflows.stage0` to default to run_once."""
+"""Allow `python -m src.workflows.stage0` to default to run_once."""
 
-from workflows.stage0.run_once import main
+from src.workflows.stage0.run_once import main
 
 main()

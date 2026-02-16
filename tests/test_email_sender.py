@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from integrations.email_sender import extract_first_name, guess_gender
+from src.integrations.email_sender import extract_first_name, guess_gender
 
 
 # ------------------------------------------------------------------
