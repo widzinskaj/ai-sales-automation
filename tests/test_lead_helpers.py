@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
-from core.lead_helpers import (
+from src.core.lead_helpers import (
     WARSAW_TZ,
     followup_due_formatted,
     is_followup_due,
@@ -14,8 +14,8 @@ from core.lead_helpers import (
     to_vocative_first_name,
     warsaw_now_formatted,
 )
-from integrations.email_sender import build_greeting
-from workflows.stage0.run_once import process_lead_row
+from src.integrations.email_sender import build_greeting
+from src.workflows.stage0.run_once import process_lead_row
 
 
 # ------------------------------------------------------------------
@@ -186,7 +186,7 @@ class TestProcessLeadRowSmtpFailure:
         "auto_email_sent_at": "",
     }
 
-    @patch("workflows.stage0.run_once.send_auto_reply", side_effect=RuntimeError("SMTP down"))
+    @patch("src.workflows.stage0.run_once.send_auto_reply", side_effect=RuntimeError("SMTP down"))
     def test_sets_error_status(self, _mock_send: MagicMock) -> None:
         spy = MagicMock()
         result = process_lead_row(self._ROW, row_number=2, sheets=spy, attachment_paths=[])
@@ -199,7 +199,7 @@ class TestProcessLeadRowSmtpFailure:
         assert updates["auto_email_status"].startswith("ERROR:")
         assert "SMTP down" in updates["auto_email_status"]
 
-    @patch("workflows.stage0.run_once.send_auto_reply", side_effect=RuntimeError("SMTP down"))
+    @patch("src.workflows.stage0.run_once.send_auto_reply", side_effect=RuntimeError("SMTP down"))
     def test_does_not_set_sent_at(self, _mock_send: MagicMock) -> None:
         spy = MagicMock()
         process_lead_row(self._ROW, row_number=2, sheets=spy, attachment_paths=[])
@@ -207,7 +207,7 @@ class TestProcessLeadRowSmtpFailure:
         updates = spy.update_row.call_args[0][1]
         assert "auto_email_sent_at" not in updates
 
-    @patch("workflows.stage0.run_once.send_auto_reply", side_effect=RuntimeError("SMTP down"))
+    @patch("src.workflows.stage0.run_once.send_auto_reply", side_effect=RuntimeError("SMTP down"))
     def test_lead_remains_retryable(self, _mock_send: MagicMock) -> None:
         spy = MagicMock()
         process_lead_row(self._ROW, row_number=2, sheets=spy, attachment_paths=[])
@@ -215,7 +215,7 @@ class TestProcessLeadRowSmtpFailure:
         # auto_email_sent_at was not written, so the lead stays new.
         assert is_new_lead(self._ROW) is True
 
-    @patch("workflows.stage0.run_once.send_auto_reply")
+    @patch("src.workflows.stage0.run_once.send_auto_reply")
     def test_success_path_sets_all_fields(self, _mock_send: MagicMock) -> None:
         spy = MagicMock()
         result = process_lead_row(self._ROW, row_number=2, sheets=spy, attachment_paths=[])
