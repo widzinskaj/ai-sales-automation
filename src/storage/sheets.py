@@ -227,6 +227,21 @@ class SheetsClient:
     # Helpers
     # ------------------------------------------------------------------
 
+    def get_status_row_number_by_email(self, email: str) -> int | None:
+        """Return 1-based row number in status sheet for *email*, or None.
+
+        Header is row 1; first data row is row 2.
+        """
+        email_norm = email.strip().lower()
+        col_idx = self._col_index("email")                  # 1-based for gspread
+        col_values = self._ws_status.col_values(col_idx)    # header at index 0
+        for i, cell in enumerate(col_values):
+            if i == 0:  # skip header
+                continue
+            if str(cell).strip().lower() == email_norm:
+                return i + 1  # convert 0-based list index to 1-based row number
+        return None
+
     def _col_index(self, col_name: str) -> int:
         """Return 1-based column index for *col_name*."""
         try:
