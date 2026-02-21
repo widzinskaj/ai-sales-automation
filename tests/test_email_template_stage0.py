@@ -48,6 +48,31 @@ class TestBuildStage0Email:
                 attachments=DUMMY_ATTACHMENTS,
             )
 
+    def test_custom_greeting_appears_at_start_of_body(self):
+        custom_greeting = "Dzień dobry, Marku,"
+        draft = build_stage0_email(
+            calendar_url=CALENDAR_URL,
+            greeting=custom_greeting,
+            attachments=DUMMY_ATTACHMENTS,
+        )
+        assert draft.body.startswith(custom_greeting)
+
+    def test_custom_greeting_does_not_alter_rest_of_body(self):
+        """Body content after the first line must be identical regardless of greeting."""
+        default_draft = build_stage0_email(
+            calendar_url=CALENDAR_URL,
+            attachments=DUMMY_ATTACHMENTS,
+        )
+        custom_draft = build_stage0_email(
+            calendar_url=CALENDAR_URL,
+            greeting="Dzień dobry, Marku,",
+            attachments=DUMMY_ATTACHMENTS,
+        )
+        # Strip the first line from both bodies and compare the remainder.
+        default_tail = default_draft.body.split("\n", 1)[1]
+        custom_tail = custom_draft.body.split("\n", 1)[1]
+        assert default_tail == custom_tail
+
 
 class TestGetStage0AttachmentsFromEnv:
     def test_happy_path(self, tmp_path, monkeypatch):
