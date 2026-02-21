@@ -10,7 +10,7 @@ from pathlib import Path
 from src.email.attachments_stage0 import get_stage0_attachments_from_env
 from src.email.template_stage0 import build_stage0_email
 from src.integrations.email_sender import send_email_draft
-from src.core.lead_helpers import warsaw_now_formatted
+from src.core.lead_helpers import generate_vocative, warsaw_now_formatted
 from src.storage.sheets import SheetsClient
 
 logger = logging.getLogger(__name__)
@@ -57,9 +57,13 @@ def process_new_leads(
             logger.warning("Skipping lead with missing email: %r", lead)
             continue
 
+        full_name = lead.get("Imię i nazwisko / Firma", "")
+        greeting = generate_vocative(full_name)
+
         try:
             draft = build_stage0_email(
                 calendar_url=calendar_url,
+                greeting=greeting,
                 attachments=attachments,
             )
         except Exception:
