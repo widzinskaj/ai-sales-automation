@@ -26,19 +26,22 @@ This project provides exactly that layer.
 
 ## Stage 0: What it does
 
-Stage 0 is the foundation layer — **functional and tested, minor polish in progress**.
+Stage 0 is the foundation layer — **functional and tested**.
 
-**Auto-reply workflow** (`python -m workflows.stage0.run_once`):
+**Auto-reply workflow** (`python -m src.stage0.process`):
 - Scans Google Sheets for new leads (email non-empty AND `auto_email_sent_at` empty).
 - Sends a Polish auto-reply email via SMTP:
-  - greeting uses vocative case via morfeusz2: "Dzień dobry, Pani/Panie {wołacz}" with safe fallback "Dzień dobry,".
+  - greeting is personalised with the Polish vocative case via morfeusz2:
+    `"Dzień dobry, Anno,"` / `"Dzień dobry, Marku,"`. When the vocative
+    cannot be derived (company name, unknown word, or morfeusz2 unavailable)
+    the system falls back silently to `"Dzień dobry,"`.
   - attaches 3 fixed PDF files.
   - includes a configurable calendar booking link (static, from `.env`).
-- On success: writes `auto_email_sent_at` (Europe/Warsaw, `YYYY-MM-DD HH:MM`), sets `auto_email_status = OK`.
+- On success: writes `auto_email_sent_at` (Europe/Warsaw, `YYYY-MM-DD HH:MM`), sets `auto_email_status = SENT`.
 - On SMTP failure: writes `auto_email_status = ERROR: <description>`, does NOT set `auto_email_sent_at` — lead remains retryable on next run.
 - Idempotent: rerunning does not resend emails.
 
-**Follow-up workflow** (`python -m workflows.stage0.mark_followups`):
+**Follow-up workflow** (`python -m src.workflows.stage0.mark_followups`):
 - Marks `followup_required = YES` for leads where 3+ days passed since auto-reply.
 - Human reminder only — no automatic follow-up email is sent.
 
@@ -56,33 +59,36 @@ Stage 0 is the foundation layer — **functional and tested, minor polish in pro
 | Column | Description |
 |---|---|
 | `email` | Lead email address |
-| `full_name` | Lead full name (used for greeting) |
+| `Imię i nazwisko / Firma` | Lead full name or company (used for greeting) |
 | `auto_email_sent_at` | Timestamp of sent auto-reply (Europe/Warsaw) |
-| `auto_email_status` | `OK` or `ERROR: <description>` |
+| `auto_email_status` | `SENT` or `ERROR: <description>` |
 | `followup_due_at` | Date when follow-up becomes due |
 | `followup_required` | `YES` / `NO` |
 
-Full 12-column specification: [`docs/stage0.md`](docs/stage0.md).
+Full specification: [`docs/stage0.md`](docs/stage0.md).
 
 ---
 
 ## Repository layout
 
 ```
-core/           Business logic and configuration
-  config.py       .env loader, typed settings
-  lead_helpers.py Pure functions: new-lead detection, dates, vocative
-storage/        Google Sheets integration (read/write leads)
-  sheets.py       SheetsClient, column-name-based access, date formatting
-integrations/   External service integrations
-  email_sender.py SMTP sender, Polish greeting, PDF attachments
-workflows/      Entrypoints
+src/
+  core/
+    config.py         .env loader, typed settings
+    lead_helpers.py   Pure functions: new-lead detection, dates, vocative, generate_vocative
+  email/
+    template_stage0.py  EmailDraft dataclass + build_stage0_email (Polish body template)
+    attachments_stage0.py  Load 3 PDFs from env vars
+  integrations/
+    email_sender.py   send_email_draft — SMTP/STARTTLS, sends EmailDraft
   stage0/
-    run_once.py     Process new leads, send auto-replies
-    mark_followups.py Flag leads awaiting follow-up
-docs/           Binding specifications
-  stage0.md       Full Stage 0 scope, schema, and constraints
-tests/          Test suite (pytest)
+    process.py        process_new_leads orchestration + main() entrypoint
+  storage/
+    sheets.py         SheetsClient — column-name-based read/write, two-tab architecture
+  workflows/
+    stage0/
+      mark_followups.py  Flag leads awaiting follow-up
+tests/                Test suite (pytest)
 ```
 
 ---
@@ -90,13 +96,15 @@ tests/          Test suite (pytest)
 ## Testing
 
 ```bash
-pytest                            # run all 46 tests
+pytest                            # run all tests
 pytest tests/test_foo.py -k name  # run a single test by name
 ```
 
 Test modules:
-- `tests/test_lead_helpers.py` — new-lead detection, Warsaw dates, follow-up logic, vocative inflection, greeting, SMTP failure handling.
-- `tests/test_email_sender.py` — first-name extraction, gender heuristic.
+- `tests/test_lead_helpers.py` — new-lead detection, Warsaw dates, follow-up logic, vocative inflection, `generate_vocative`.
+- `tests/test_email_sender.py` — `send_email_draft` (SMTP mocked).
+- `tests/test_email_template_stage0.py` — email template, attachments loader, greeting integration.
+- `tests/stage0/test_process.py` — `process_new_leads` orchestration (send success/failure/idempotency).
 
 ---
 
@@ -105,8 +113,8 @@ Test modules:
 - **Python 3.11+**
 - **Google Sheets API** — sole datastore / status board (`gspread`, `google-auth`)
 - **SMTP** — outbound email delivery only
-- **morfeusz2** — Polish morphological dictionary for vocative case (not AI)
-- **Pydantic** — data validation
+- **morfeusz2** — Polish morphological dictionary for vocative-case greeting personalisation (not AI).
+  Loaded lazily on first use; if unavailable the system falls back to `"Dzień dobry,"` without crashing.
 - **tzdata** — required on Windows for `Europe/Warsaw` timezone (`zoneinfo`)
 - **pytest** — test framework
 
@@ -124,22 +132,22 @@ pip install -r requirements.txt
 
 # 2. Configure environment
 cp .env.example .env
-# Fill in GOOGLE_SHEET_ID, SMTP_*, CALENDAR_LINK, SMTP_FROM_EMAIL/NAME
+# Fill in GOOGLE_SHEET_ID, GOOGLE_SHEET_TAB_INPUT, GOOGLE_SHEET_TAB_STATUS,
+# SMTP_*, CALENDAR_URL, SMTP_FROM_EMAIL/NAME, STAGE0_PDF_1/2/3
 
 # 3. Add Google Cloud service account key
-# Place the JSON key file at secrets/service_account.json
+# Place the JSON key file at the path set in GOOGLE_SERVICE_ACCOUNT_JSON
 # (secrets/ is gitignored — never commit credentials)
 
 # 4. Add PDF attachments
-# Place 3 PDF files in assets/attachments/ and update
-# ATTACHMENT_A/B/C paths in .env if names differ from defaults
+# Place 3 PDF files and set STAGE0_PDF_1/2/3 in .env
 # (assets/attachments/ is gitignored)
 
 # 5. Process new leads (send auto-reply emails)
-python -m workflows.stage0.run_once
+python -m src.stage0.process
 
 # 6. Mark leads awaiting follow-up (3+ days since auto-reply)
-python -m workflows.stage0.mark_followups
+python -m src.workflows.stage0.mark_followups
 ```
 
 See [`docs/stage0.md`](docs/stage0.md) for the full binding specification.
@@ -160,7 +168,7 @@ See [`docs/stage0.md`](docs/stage0.md) for the full binding specification.
 
 | Stage | Focus | Status |
 |---|---|---|
-| **0 — Foundation** | Auto-reply, follow-up flags, no AI | Functional, tested, polish in progress |
+| **0 — Foundation** | Auto-reply, follow-up flags, no AI | Functional, tested |
 | 1 — Structured automation | Categorization, contact history, prioritization | Planned |
 | 2 — AI-assisted support | Draft responses, extraction, human-reviewed | Planned |
 | 3 — Advanced (optional) | Analytics, optimization | Planned |
@@ -187,5 +195,4 @@ is not copied elsewhere except transiently during email sending.
 
 ## Status
 
-Stage 0 core is **functional and tested** (46 unit tests passing).
-Minor polish remains before closing Stage 0. The project is under active development.
+Stage 0 is **functional and tested**. The project is under active development.
