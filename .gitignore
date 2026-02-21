@@ -33,3 +33,7 @@ assets/attachments/
 CLAUDE.md
 .claude/
 
+# Local operational files (DO NOT COMMIT)
+names.txt
+ops_vocative_check.py
+vocative_report.csv
