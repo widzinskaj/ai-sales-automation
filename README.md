@@ -269,6 +269,15 @@ Before switching from test to production:
 
 ---
 
+## Runbook
+
+Step-by-step operational instructions (preconditions, env vars, scheduler setup,
+status field reference, troubleshooting, safe change procedure, emergency stop):
+
+**[RUNBOOK.md](RUNBOOK.md)**
+
+---
+
 ## Repository Layout
 
 ```
