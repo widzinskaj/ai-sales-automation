@@ -57,3 +57,9 @@ ATTACHMENT_B: str = STAGE0_PDF_2
 ATTACHMENT_C: str = STAGE0_PDF_3
 
 APP_ENV: str = os.getenv("APP_ENV", "local").strip()
+
+# Test mode — redirects all outbound emails to a single internal address.
+# TEST_RECIPIENT_EMAIL is validated at runtime (process_new_leads startup),
+# not here, because it is only required when STAGE0_TEST_MODE=1.
+STAGE0_TEST_MODE: bool = os.getenv("STAGE0_TEST_MODE", "0").strip() == "1"
+TEST_RECIPIENT_EMAIL: str | None = os.getenv("TEST_RECIPIENT_EMAIL", "").strip() or None
