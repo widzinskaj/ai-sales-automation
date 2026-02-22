@@ -11,7 +11,6 @@ from src.core.lead_helpers import (
     generate_vocative,
     is_followup_due,
     is_new_lead,
-    to_vocative_first_name,
     warsaw_now_formatted,
 )
 
@@ -120,61 +119,11 @@ class TestIsFollowupDue:
 
 
 # ------------------------------------------------------------------
-# to_vocative_first_name
-# ------------------------------------------------------------------
-
-class TestToVocativeFirstName:
-    def test_anna(self):
-        assert to_vocative_first_name("Anna") == "Anno"
-
-    def test_marek(self):
-        assert to_vocative_first_name("Marek") == "Marku"
-
-    def test_kuba(self):
-        assert to_vocative_first_name("Kuba") == "Kubo"
-
-    def test_agnieszka(self):
-        assert to_vocative_first_name("Agnieszka") == "Agnieszko"
-
-    def test_tomasz(self):
-        assert to_vocative_first_name("Tomasz") == "Tomaszu"
-
-    def test_unknown_returns_none(self):
-        assert to_vocative_first_name("Xyzabc123") is None
-
-    def test_empty_returns_none(self):
-        assert to_vocative_first_name("") is None
-
-
-# ------------------------------------------------------------------
 # generate_vocative
 # ------------------------------------------------------------------
 
 class TestGenerateVocative:
-    def test_known_name_returns_personalised_greeting(self):
-        # morfeusz2 knows "Anna" → vocative "Anno"
-        assert generate_vocative("Anna Kowalska") == "Dzień dobry, Anno,"
-
-    def test_known_male_name(self):
-        # morfeusz2 knows "Marek" → vocative "Marku"
-        assert generate_vocative("Marek Nowak") == "Dzień dobry, Marku,"
-
-    def test_unknown_name_returns_fallback(self):
-        # Nonsense token — morfeusz2 cannot generate a vocative
-        assert generate_vocative("Xyzabc123 Whatever") == "Dzień dobry,"
-
-    def test_empty_string_returns_fallback(self):
-        assert generate_vocative("") == "Dzień dobry,"
-
-    def test_whitespace_only_returns_fallback(self):
-        assert generate_vocative("   ") == "Dzień dobry,"
-
-    def test_company_like_string_returns_fallback(self):
-        # First token "ACME" is not a Polish first name — fallback expected
-        assert generate_vocative("ACME Sp. z o.o.") == "Dzień dobry,"
-
-    def test_morfeusz_unavailable_returns_fallback(self):
-        """When morfeusz2 cannot be initialised, fallback to plain greeting."""
-        from unittest.mock import patch
-        with patch("src.core.lead_helpers._get_morf", return_value=None):
-            assert generate_vocative("Anna Kowalska") == "Dzień dobry,"
+    def test_always_fallback(self):
+        assert generate_vocative("Anna Kowalska") == "Dzień dobry,"
+        assert generate_vocative("Jan") == "Dzień dobry,"
+        assert generate_vocative(" ") == "Dzień dobry,"
