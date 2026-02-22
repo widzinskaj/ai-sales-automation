@@ -46,6 +46,30 @@ DATE_COLUMNS = ("auto_email_sent_at", "followup_due_at")
 _DATE_NUMBER_FORMAT = {"type": "DATE_TIME", "pattern": "yyyy-mm-dd hh:mm"}
 
 
+def is_eligible_for_send(status_row: dict[str, str] | None) -> bool:
+    """Return True when a lead should receive (or retry) the auto-reply email.
+
+    Rules (in evaluation order):
+
+    1. No status row at all → eligible (brand-new lead).
+    2. ``auto_email_sent_at`` is non-empty → **not** eligible.
+       A recorded timestamp means the email was delivered; we never resend
+       even when ``auto_email_status`` is still "ERROR".
+    3. ``auto_email_status`` is "" (fresh) or starts with "ERROR" → eligible.
+       An empty status means the row was just created and never attempted.
+       An ERROR status with no ``sent_at`` means the previous run failed
+       before confirming delivery — retry is safe.
+    4. Any other status (e.g. "SENT" with a missing timestamp due to a bug,
+       or a future status value) → not eligible.
+    """
+    if status_row is None:
+        return True
+    if str(status_row.get("auto_email_sent_at", "")).strip():
+        return False  # Rule 2: delivery confirmed — never resend
+    status = str(status_row.get("auto_email_status", "")).strip()
+    return status == "" or status.startswith("ERROR")
+
+
 class SheetsClient:
     """Thin wrapper around gspread for column-name-based access."""
 
@@ -114,7 +138,7 @@ class SheetsClient:
         return mapping
 
     def get_new_leads(self) -> list[dict[str, str]]:
-        """Return input rows that are new or not yet emailed (idempotent)."""
+        """Return input rows eligible for the auto-reply email (idempotent)."""
         input_rows = self.read_input_rows()
         status_index = self.get_status_index_by_email()
 
@@ -125,10 +149,7 @@ class SheetsClient:
                 continue
 
             status_row = status_index.get(email)
-            sent_at = "" if not status_row else str(status_row.get("auto_email_sent_at", "")).strip()
-
-            # new = missing in status OR not sent yet
-            if (status_row is None) or (sent_at == ""):
+            if is_eligible_for_send(status_row):
                 new_rows.append(row)
 
         return new_rows
