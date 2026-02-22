@@ -11,6 +11,7 @@ from src.email.attachments_stage0 import get_stage0_attachments_from_env
 from src.email.template_stage0 import build_stage0_email
 from src.integrations.email_sender import send_email_draft
 from src.core.lead_helpers import generate_vocative, warsaw_now_formatted
+from src.stage0.test_mode import resolve_recipient_email
 from src.storage.sheets import SheetsClient
 
 logger = logging.getLogger(__name__)
@@ -33,6 +34,8 @@ def process_new_leads(
     smtp_user: str,
     smtp_password: str,
     smtp_from_email: str,
+    test_mode: bool = False,
+    test_recipient: str | None = None,
 ) -> ProcessReport:
     """Send auto-reply emails for new leads and record status in the sheet.
 
@@ -40,7 +43,19 @@ def process_new_leads(
     - calls ensure_status_rows_exist() (structural sync, idempotent)
     - sends SMTP email per new lead
     - writes auto_email_sent_at / auto_email_status to status sheet
+
+    When *test_mode* is True every outbound email is redirected to
+    *test_recipient*.  If *test_recipient* is missing the function raises
+    immediately before touching any data.
     """
+    if test_mode:
+        if not (test_recipient or "").strip():
+            raise RuntimeError(
+                "TEST_RECIPIENT_EMAIL is required when STAGE0_TEST_MODE=1. "
+                "Set it to an internal address before running in test mode."
+            )
+        logger.info("TEST MODE active — recipient override in effect")
+
     sheets_client.ensure_status_rows_exist()
 
     input_rows = sheets_client.read_input_rows()
@@ -77,6 +92,9 @@ def process_new_leads(
             emails_failed += 1
             continue
 
+        recipient = resolve_recipient_email(
+            email, test_mode=test_mode, test_recipient=test_recipient
+        )
         try:
             send_email_draft(
                 smtp_host=smtp_host,
@@ -84,7 +102,7 @@ def process_new_leads(
                 smtp_user=smtp_user,
                 smtp_password=smtp_password,
                 from_email=smtp_from_email,
-                to_email=email,
+                to_email=recipient,
                 draft=draft,
             )
         except Exception as exc:
@@ -138,6 +156,8 @@ def main() -> None:
         smtp_user=config.SMTP_USER,
         smtp_password=config.SMTP_PASS,
         smtp_from_email=config.SMTP_FROM_EMAIL,
+        test_mode=config.STAGE0_TEST_MODE,
+        test_recipient=config.TEST_RECIPIENT_EMAIL,
     )
     logger.info("Done: %s", report)
 
