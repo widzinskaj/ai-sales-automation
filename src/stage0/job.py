@@ -15,7 +15,7 @@ import logging
 import sys
 from typing import TYPE_CHECKING
 
-from src.stage0.process import ProcessReport, process_new_leads
+from src.stage0.process import ProcessReport, process_followups, process_new_leads
 
 if TYPE_CHECKING:
     from src.storage.sheets import SheetsClient
@@ -80,6 +80,9 @@ def run_stage0_job(
         report.emails_sent,
         report.emails_failed,
     )
+
+    followup_updated = process_followups(sheets_client)
+    logger.info("Stage0 follow-up step complete — updated=%d", followup_updated)
 
     return report
 
