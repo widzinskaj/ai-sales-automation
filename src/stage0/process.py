@@ -11,6 +11,7 @@ from src.email.attachments_stage0 import get_stage0_attachments_from_env
 from src.email.template_stage0 import build_stage0_email
 from src.integrations.email_sender import send_email_draft
 from src.core.lead_helpers import generate_vocative, warsaw_now_formatted
+from src.stage0.followup import apply_followup_logic
 from src.stage0.test_mode import resolve_recipient_email
 from src.storage.sheets import SheetsClient
 
@@ -133,6 +134,51 @@ def process_new_leads(
         emails_sent=emails_sent,
         emails_failed=emails_failed,
     )
+
+
+_FOLLOWUP_FIELDS = ("followup_due_at", "followup_required")
+
+
+def process_followups(sheets_client: SheetsClient) -> int:
+    """Apply follow-up scheduling logic to all status rows and persist changes.
+
+    For each status row with a valid email:
+    - Computes the desired state via apply_followup_logic().
+    - Builds a patch containing only the fields that changed
+      (followup_due_at, followup_required).
+    - Writes the patch via update_row() when non-empty.
+
+    Returns the number of rows that were updated.
+    Logs a PII-free summary line when done.
+    """
+    rows = sheets_client.read_status_rows()
+    updated = 0
+
+    for row in rows:
+        email = str(row.get("email", "")).strip().lower()
+        if not email:
+            continue
+
+        new_row = apply_followup_logic(row)  # type: ignore[arg-type]
+
+        patch = {
+            field: str(new_row.get(field) or "")
+            for field in _FOLLOWUP_FIELDS
+            if str(new_row.get(field) or "").strip() != str(row.get(field) or "").strip()
+        }
+
+        if not patch:
+            continue
+
+        row_number = sheets_client.get_status_row_number_by_email(email)
+        if row_number is None:
+            continue
+
+        sheets_client.update_row(row_number, patch)
+        updated += 1
+
+    logger.info("Follow-up processing done — updated=%d", updated)
+    return updated
 
 
 def main() -> None:
