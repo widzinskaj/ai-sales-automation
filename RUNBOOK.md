@@ -267,7 +267,10 @@ system then sets `followup_required = NO` on the next run.
     auto_email_sent_at = "2025-03-10 09:15"
     auto_email_status  = "SENT"
     followup_due_at    = "2025-03-13 09:15"
-    followup_required  = "YES"
+    followup_required  = "NO"     <- scheduled, not yet due
+
+[job runs — 3 days pass, now >= followup_due_at]
+    followup_required  = "YES"    <- sales team should follow up
 
 [sales team follows up -> sets followup_completed_at manually]
 [next job run]

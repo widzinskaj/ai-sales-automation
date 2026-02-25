@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import sys
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 from src.email.attachments_stage0 import get_stage0_attachments_from_env
@@ -139,7 +140,11 @@ def process_new_leads(
 _FOLLOWUP_FIELDS = ("followup_due_at", "followup_required")
 
 
-def process_followups(sheets_client: SheetsClient) -> int:
+def process_followups(
+    sheets_client: SheetsClient,
+    *,
+    now: datetime | None = None,
+) -> int:
     """Apply follow-up scheduling logic to all status rows and persist changes.
 
     For each status row with a valid email:
@@ -147,6 +152,12 @@ def process_followups(sheets_client: SheetsClient) -> int:
     - Builds a patch containing only the fields that changed
       (followup_due_at, followup_required).
     - Writes the patch via update_row() when non-empty.
+
+    Arguments:
+        sheets_client: provides read_status_rows / get_status_row_number_by_email
+            / update_row.
+        now: reference time forwarded to apply_followup_logic for due-date
+            evaluation.  Defaults to datetime.now(WARSAW_TZ) when None.
 
     Returns the number of rows that were updated.
     Logs a PII-free summary line when done.
@@ -159,7 +170,7 @@ def process_followups(sheets_client: SheetsClient) -> int:
         if not email:
             continue
 
-        new_row = apply_followup_logic(row)  # type: ignore[arg-type]
+        new_row = apply_followup_logic(row, now=now)  # type: ignore[arg-type]
 
         patch = {
             field: str(new_row.get(field) or "")

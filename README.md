@@ -154,7 +154,11 @@ Managed by the application. Only system-controlled columns are written.
     |
     +-- send OK  --> auto_email_sent_at=<ts>, auto_email_status="SENT"
     |                    |
-    |                    +--> followup_due_at=<ts+3d>, followup_required="YES"
+    |                    +--> followup_due_at=<ts+3d>, followup_required="NO"
+    |                    |                    (scheduled, not yet due)
+    |                    |
+    |                    +--> [3 days pass] --> followup_required="YES"
+    |                    |                    (now >= followup_due_at)
     |                    |
     |                    +--> [human follows up] --> followup_completed_at=<ts>,
     |                                                followup_required="NO"
