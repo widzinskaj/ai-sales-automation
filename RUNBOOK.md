@@ -453,3 +453,365 @@ After the next scheduled run, check the log for:
 And confirm that `auto_email_status` in the status tab shows `SENT` only for rows
 processed during the test-mode run (verify by checking the `auto_email_sent_at`
 timestamp).
+
+---
+
+## 10. Windows Task Scheduler Setup
+
+This section is for operators running Stage 0 on a Windows machine without access to
+cron or cloud schedulers. No knowledge of the codebase is required.
+
+---
+
+### 10.1 Prerequisites
+
+Before configuring the task, verify the following on the Windows host:
+
+1. **Python 3.11+** installed and on the system PATH.
+   Verify: open PowerShell and run `python --version`. Expected output: `Python 3.11.x` or later.
+
+2. **Repository cloned** to a stable local path with no spaces if possible.
+   Example: `C:\apps\ai-sales-automation`
+
+3. **Virtual environment created and dependencies installed:**
+   ```
+   cd C:\apps\ai-sales-automation
+   python -m venv .venv
+   .venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
+
+4. **`.env` file present** at the repository root with all required variables filled in
+   (see section 3). The `.env` file must be at `C:\apps\ai-sales-automation\.env`.
+
+5. **`secrets\service_account.json`** present at the path set in
+   `GOOGLE_SERVICE_ACCOUNT_JSON`.
+
+6. **PDF attachments** present at the paths set in `STAGE0_PDF_1/2/3`.
+
+7. **`logs\` directory created** inside the repository root (Task Scheduler will not
+   create it automatically):
+   ```
+   mkdir C:\apps\ai-sales-automation\logs
+   ```
+
+---
+
+### 10.2 Creating the Task (Create Task, not Basic Task)
+
+Open **Task Scheduler** (`taskschd.msc`) and in the right-hand panel choose
+**Create Task…** (not "Create Basic Task"). Work through each tab in order.
+
+---
+
+#### General tab
+
+| Field | Value |
+|---|---|
+| **Name** | `Stage0 Auto-Reply Job` |
+| **Description** | Sends auto-reply emails to new sales leads and updates follow-up status. |
+| **Security options** | See below |
+
+**Security options — two choices:**
+
+| Scenario | Setting |
+|---|---|
+| Machine is always on, operator is always logged in | *Run only when user is logged on* — simpler, no password required. |
+| Machine may be unattended (server, background PC) | *Run whether user is logged on or not* — requires entering the Windows account password when saving the task. Recommended for production. |
+
+Leave **Run with highest privileges** unchecked unless the repository path or Python
+installation requires elevated access. In most deployments it is not needed.
+
+---
+
+#### Triggers tab
+
+Click **New…** and set:
+
+| Field | Value |
+|---|---|
+| **Begin the task** | On a schedule |
+| **Settings** | Daily |
+| **Start** | Today's date, `00:00:00` (start of day) |
+| **Advanced settings — Repeat task every** | `5 minutes` (or `30 minutes` for lower volume) |
+| **for a duration of** | `Indefinitely` |
+| **Enabled** | Checked |
+
+Click **OK**.
+
+> To run every 5 minutes: set "Repeat task every" = 5 minutes, duration = Indefinitely.
+> Task Scheduler does not offer a sub-minute interval.
+
+---
+
+#### Actions tab
+
+Click **New…**. Configure one of the two variants below.
+
+---
+
+##### Variant A — cmd.exe with log redirection
+
+| Field | Value |
+|---|---|
+| **Action** | Start a program |
+| **Program/script** | `cmd.exe` |
+| **Add arguments** | `/c "cd /d C:\apps\ai-sales-automation && .venv\Scripts\python.exe -m src.stage0.job >> logs\stage0.log 2>&1"` |
+| **Start in** | `C:\apps\ai-sales-automation` |
+
+Both stdout and stderr are appended to `logs\stage0.log`. The log file grows over time;
+rotate it manually or with a scheduled `rename` command.
+
+---
+
+##### Variant B — powershell.exe with log redirection
+
+| Field | Value |
+|---|---|
+| **Action** | Start a program |
+| **Program/script** | `powershell.exe` |
+| **Add arguments** | `-NonInteractive -NoProfile -Command "Set-Location 'C:\apps\ai-sales-automation'; .\.venv\Scripts\python.exe -m src.stage0.job *>> logs\stage0.log"` |
+| **Start in** | `C:\apps\ai-sales-automation` |
+
+`*>>` redirects both stdout and stderr to the log file (PowerShell syntax).
+
+> **Which variant to choose:**
+> Use **Variant A (cmd.exe)** if you are not familiar with PowerShell.
+> Use **Variant B (PowerShell)** if you need scripting around the invocation
+> (e.g. conditional logic, environment variable injection before the run).
+
+---
+
+#### Conditions tab
+
+Leave default values unless the machine is a laptop:
+
+| Setting | Value |
+|---|---|
+| **Start the task only if the computer is on AC power** | Uncheck if the host is a desktop or server. Keep checked for laptops. |
+| **Wake the computer to run this task** | Leave unchecked (not needed). |
+
+---
+
+#### Settings tab
+
+| Setting | Value | Reason |
+|---|---|---|
+| **Allow task to be run on demand** | Checked | Enables the "Run" button for manual testing. |
+| **Run task as soon as possible after a scheduled start is missed** | Checked | Recovers missed runs after a reboot. |
+| **Stop the task if it runs longer than** | `5 minutes` | The job should complete in seconds. A 5-minute timeout prevents a hung process from blocking the next cycle. |
+| **If the task is already running, then the following rule applies** | **Do not start a new instance** | Prevents overlap if a slow Sheets API call extends beyond the trigger interval. |
+
+Click **OK** and enter the Windows account password when prompted (required for
+"Run whether user is logged on or not").
+
+---
+
+### 10.3 Ensuring `.env` is Loaded
+
+The job loads `.env` from the **current working directory**. Task Scheduler sets the
+working directory to the value of the **Start in** field in the Actions tab.
+
+**Required:** `Start in` must be set to the repository root (e.g.
+`C:\apps\ai-sales-automation`). If it is left empty, `.env` will not be found and the
+job will fail with a missing-variable error.
+
+**How to verify `.env` is loading correctly:**
+
+After the first scheduled run, open `logs\stage0.log` and confirm you see:
+
+```
+Stage0 job start — test_mode=False
+```
+
+If instead you see `KeyError` or `ValueError` for a variable name, `.env` is not being
+read. Check that:
+1. `Start in` in the Action is set to the repository root.
+2. The `.env` file exists at the repository root (not in a subdirectory).
+3. The `.env` file contains all required variables (section 3).
+
+---
+
+### 10.4 Operational Procedures
+
+#### Manual run (on-demand)
+
+1. Open Task Scheduler → Task Scheduler Library.
+2. Find `Stage0 Auto-Reply Job`.
+3. In the right-hand panel click **Run**.
+4. Wait a few seconds, then press **F5** to refresh.
+5. Check the **Last Run Result** column. Expected value: `0x0` (success).
+   Any other value indicates the job exited with an error — open `logs\stage0.log`
+   for details.
+
+#### Read the last run result codes
+
+| Code | Meaning |
+|---|---|
+| `0x0` | Success |
+| `0x1` | Python exited with `sys.exit(1)` — job failed; check log |
+| `0x41301` | Task is currently running (not an error) |
+| `0x8004131F` | No instances allowed to run concurrently (task was already running when triggered) |
+
+#### Restart a running task
+
+Right-click the task → **End** → wait for status to clear → **Run**.
+
+#### Disable the task (emergency stop)
+
+Right-click the task → **Disable**. The task will no longer trigger automatically.
+Re-enable via right-click → **Enable**.
+
+Disabling is the fastest way to stop all future runs on Windows. It takes effect
+immediately — the next scheduled trigger is skipped.
+
+#### Verify the job is running on schedule
+
+In `logs\stage0.log`, each cycle appends two timestamped lines:
+
+```
+2025-03-10 09:30:01 [INFO] src.stage0.job — Stage0 job start — test_mode=False
+2025-03-10 09:30:03 [INFO] src.stage0.job — Stage0 job complete — scanned=5 new=0 sent=0 failed=0
+```
+
+Confirm the timestamps are spaced at the configured interval (e.g. every 5 or 30 minutes).
+If lines stop appearing, check whether the task is still enabled and whether the last run
+result is `0x0`.
+
+---
+
+### 10.5 Emergency Stop Drill on Windows (Test Mode)
+
+Use this procedure to verify that the system can be safely switched to test mode before
+disabling it completely, or whenever you need to stop real sends without stopping the job.
+
+**Step 1 — Set test mode in `.env`:**
+
+Open `C:\apps\ai-sales-automation\.env` and set:
+
+```
+STAGE0_TEST_MODE=1
+TEST_RECIPIENT_EMAIL=operator@yourcompany.com
+```
+
+Save the file. No restart of Task Scheduler is needed — variables are read from `.env`
+at the start of each job run.
+
+**Step 2 — Trigger a manual run:**
+
+Open Task Scheduler → right-click `Stage0 Auto-Reply Job` → **Run**.
+
+**Step 3 — Verify test mode is active in the log:**
+
+Open `logs\stage0.log` and confirm the following line appears in the most recent run:
+
+```
+[INFO] src.stage0.job — TEST MODE active — all outbound emails go to test recipient
+```
+
+If this line is absent, `.env` may not have been saved or the old value is still cached.
+Verify the file content and run again.
+
+**Step 4 — Verify in the test inbox:**
+
+Check the inbox at `TEST_RECIPIENT_EMAIL`. You should receive one email per lead that was
+eligible for processing. No email should arrive at any real lead address.
+
+**Step 5 — Verify in Google Sheets:**
+
+Open the `automation_stage0_status` tab. For each lead that was processed during the
+drill:
+- `auto_email_sent_at` should contain a timestamp.
+- `auto_email_status` should be `SENT`.
+
+The status sheet is written even in test mode, so the drill is a full end-to-end
+verification of the pipeline (credentials, SMTP, Sheets write) with zero risk to real
+leads.
+
+**Step 6 — Restore production mode:**
+
+When ready to resume production sends, set `STAGE0_TEST_MODE=0` (or remove the line)
+in `.env` and save. The next job run will send to real leads.
+
+---
+
+### 10.6 Ten-Cycle Operational Verification (Windows)
+
+Run through this checklist after the initial setup or after any significant change to the
+environment (new machine, updated `.env`, re-created virtual environment).
+
+**Prerequisites:** Task Scheduler configured, job enabled, at least one new lead present
+in `automation_stage0_input`.
+
+---
+
+#### Phase 1 — First-send verification (cycles 1–3)
+
+- [ ] Trigger manual run (cycle 1). Check `logs\stage0.log` for:
+  ```
+  Stage0 job complete — scanned=N new=M sent=M failed=0
+  ```
+  where `M >= 1` for a new lead.
+- [ ] Open `automation_stage0_status`. Confirm the lead's row has:
+  - `auto_email_sent_at` filled with a timestamp.
+  - `auto_email_status = SENT`.
+  - `followup_due_at` filled with `sent_at + 3 days`.
+  - `followup_required = NO` (not yet due).
+- [ ] Confirm the lead received the email at their real address (or at
+  `TEST_RECIPIENT_EMAIL` in test mode).
+- [ ] Trigger manual run again (cycle 2). Confirm in log:
+  ```
+  Stage0 job complete — scanned=N new=0 sent=0 failed=0
+  ```
+  `new=0` confirms idempotency — no duplicate send.
+- [ ] Trigger a third run (cycle 3). Confirm `new=0` again. No new rows in the status
+  sheet for the already-processed lead.
+
+---
+
+#### Phase 2 — Scheduled-run stability (cycles 4–7)
+
+- [ ] Let the task run automatically for at least 4 scheduled cycles without manual
+  intervention.
+- [ ] After 4 cycles, open `logs\stage0.log` and count the `Stage0 job complete` lines.
+  There should be exactly 4 new lines, each with `new=0 sent=0 failed=0` (assuming no
+  new leads arrived).
+- [ ] Confirm no duplicate entries appear in `automation_stage0_status` for any existing
+  lead.
+
+---
+
+#### Phase 3 — Follow-up flag verification (cycle 8)
+
+- [ ] Locate a row in `automation_stage0_status` where `followup_due_at` is in the past
+  (i.e. the lead was sent the auto-reply more than 3 days ago).
+- [ ] Trigger a manual run and confirm the log shows:
+  ```
+  Stage0 follow-up step complete — updated=1
+  ```
+  (or higher, depending on how many leads are past due).
+- [ ] In `automation_stage0_status`, confirm the lead's row now shows:
+  - `followup_required = YES`.
+- [ ] Simulate completion: manually enter a timestamp in `followup_completed_at` for that
+  row.
+- [ ] Trigger another run (cycle 9) and confirm:
+  - Log: `Stage0 follow-up step complete — updated=1`.
+  - Sheet: `followup_required = NO`.
+
+---
+
+#### Phase 4 — Stable state (cycle 10)
+
+- [ ] With no new leads and all follow-ups resolved, trigger a final run (cycle 10).
+- [ ] Confirm in log:
+  ```
+  Stage0 job complete — scanned=N new=0 sent=0 failed=0
+  Stage0 follow-up step complete — updated=0
+  ```
+  Both counters at zero confirms the system is in a stable, fully-processed state.
+- [ ] Confirm no new rows or changes appear in the status sheet.
+
+---
+
+**Checklist complete.** The system is verified for correct first-send, idempotency,
+follow-up scheduling, follow-up completion, and stable-state behaviour on Windows.
