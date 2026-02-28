@@ -546,39 +546,14 @@ Click **OK**.
 
 #### Actions tab
 
-Click **New…**. Configure one of the two variants below.
-
----
-
-##### Variant A — cmd.exe with log redirection
+Click **New…** and configure:
 
 | Field | Value |
 |---|---|
 | **Action** | Start a program |
 | **Program/script** | `cmd.exe` |
-| **Add arguments** | `/c "cd /d C:\apps\ai-sales-automation && .venv\Scripts\python.exe -m src.stage0.job >> logs\stage0.log 2>&1"` |
+| **Add arguments** | `/c scripts\run_stage0_job.cmd` |
 | **Start in** | `C:\apps\ai-sales-automation` |
-
-Both stdout and stderr are appended to `logs\stage0.log`. The log file grows over time;
-rotate it manually or with a scheduled `rename` command.
-
----
-
-##### Variant B — powershell.exe with log redirection
-
-| Field | Value |
-|---|---|
-| **Action** | Start a program |
-| **Program/script** | `powershell.exe` |
-| **Add arguments** | `-NonInteractive -NoProfile -Command "Set-Location 'C:\apps\ai-sales-automation'; .\.venv\Scripts\python.exe -m src.stage0.job *>> logs\stage0.log"` |
-| **Start in** | `C:\apps\ai-sales-automation` |
-
-`*>>` redirects both stdout and stderr to the log file (PowerShell syntax).
-
-> **Which variant to choose:**
-> Use **Variant A (cmd.exe)** if you are not familiar with PowerShell.
-> Use **Variant B (PowerShell)** if you need scripting around the invocation
-> (e.g. conditional logic, environment variable injection before the run).
 
 ---
 
@@ -618,7 +593,7 @@ job will fail with a missing-variable error.
 
 **How to verify `.env` is loading correctly:**
 
-After the first scheduled run, open `logs\stage0.log` and confirm you see:
+After the first scheduled run, open `logs\stage0_scheduler.log` and confirm you see:
 
 ```
 Stage0 job start — test_mode=False
@@ -632,6 +607,20 @@ read. Check that:
 
 ---
 
+### Quick verification (Windows)
+
+- Scheduler task name: `ai-sales-automation Stage0`
+- Log file (wrapper): `logs/stage0_scheduler.log`
+
+To confirm the job is running:
+1) Open `logs/stage0_scheduler.log`
+2) Verify you see repeating pairs of lines:
+   - `Stage0 job start`
+   - `Stage0 job complete`
+   (timestamps should advance roughly at the configured interval, e.g. every 5 minutes)
+
+---
+
 ### 10.4 Operational Procedures
 
 #### Manual run (on-demand)
@@ -641,7 +630,7 @@ read. Check that:
 3. In the right-hand panel click **Run**.
 4. Wait a few seconds, then press **F5** to refresh.
 5. Check the **Last Run Result** column. Expected value: `0x0` (success).
-   Any other value indicates the job exited with an error — open `logs\stage0.log`
+   Any other value indicates the job exited with an error — open `logs\stage0_scheduler.log`
    for details.
 
 #### Read the last run result codes
@@ -667,7 +656,7 @@ immediately — the next scheduled trigger is skipped.
 
 #### Verify the job is running on schedule
 
-In `logs\stage0.log`, each cycle appends two timestamped lines:
+In `logs\stage0_scheduler.log`, each cycle appends two timestamped lines:
 
 ```
 2025-03-10 09:30:01 [INFO] src.stage0.job — Stage0 job start — test_mode=False
@@ -703,7 +692,7 @@ Open Task Scheduler → right-click `Stage0 Auto-Reply Job` → **Run**.
 
 **Step 3 — Verify test mode is active in the log:**
 
-Open `logs\stage0.log` and confirm the following line appears in the most recent run:
+Open `logs\stage0_scheduler.log` and confirm the following line appears in the most recent run:
 
 ```
 [INFO] src.stage0.job — TEST MODE active — all outbound emails go to test recipient
@@ -747,7 +736,7 @@ in `automation_stage0_input`.
 
 #### Phase 1 — First-send verification (cycles 1–3)
 
-- [ ] Trigger manual run (cycle 1). Check `logs\stage0.log` for:
+- [ ] Trigger manual run (cycle 1). Check `logs\stage0_scheduler.log` for:
   ```
   Stage0 job complete — scanned=N new=M sent=M failed=0
   ```
@@ -773,7 +762,7 @@ in `automation_stage0_input`.
 
 - [ ] Let the task run automatically for at least 4 scheduled cycles without manual
   intervention.
-- [ ] After 4 cycles, open `logs\stage0.log` and count the `Stage0 job complete` lines.
+- [ ] After 4 cycles, open `logs\stage0_scheduler.log` and count the `Stage0 job complete` lines.
   There should be exactly 4 new lines, each with `new=0 sent=0 failed=0` (assuming no
   new leads arrived).
 - [ ] Confirm no duplicate entries appear in `automation_stage0_status` for any existing
