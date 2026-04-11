@@ -32,18 +32,23 @@ NOW_AFTER = datetime(2025, 6, 5, 12, 0, tzinfo=WARSAW_TZ)    # 1 day after due
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _sent_row(**overrides: object) -> StatusRow:
+def _sent_row(
+    email: str = "test@example.com",
+    email_wyslany: str | None = SENT_AT,
+    status_emaila: str = "SENT",
+    followup_od: str | None = None,
+    wymaga_followup: str = "",
+    followup_wykonany: str | None = None,
+) -> StatusRow:
     """Return a base StatusRow where the auto-reply was sent, nothing else set."""
-    row: StatusRow = {
-        "email": "test@example.com",
-        "auto_email_sent_at": SENT_AT,
-        "auto_email_status": "SENT",
-        "followup_due_at": None,
-        "followup_required": "",
-        "followup_completed_at": None,
+    return {
+        "Email": email,
+        "Email wysłany": email_wyslany,
+        "Status emaila": status_emaila,
+        "Follow-up od": followup_od,
+        "Wymaga follow-upu": wymaga_followup,
+        "Follow-up wykonany": followup_wykonany,
     }
-    row.update(overrides)  # type: ignore[arg-type]
-    return row
 
 
 # ---------------------------------------------------------------------------
@@ -53,35 +58,35 @@ def _sent_row(**overrides: object) -> StatusRow:
 class TestFirstTimeScheduling:
     def test_sets_followup_due_at_plus_three_days(self):
         result = apply_followup_logic(_sent_row(), now=NOW_BEFORE)
-        assert result["followup_due_at"] == DUE_AT
+        assert result["Follow-up od"] == DUE_AT
 
     def test_sets_followup_required_no_on_scheduling(self):
-        """First-time scheduling sets required="NO" — not yet due at that moment."""
+        """First-time scheduling sets Wymaga follow-upu="NO" — not yet due at that moment."""
         result = apply_followup_logic(_sent_row(), now=NOW_BEFORE)
-        assert result["followup_required"] == "NO"
+        assert result["Wymaga follow-upu"] == "NO"
 
     def test_preserves_all_other_fields(self):
         row = _sent_row()
         result = apply_followup_logic(row, now=NOW_BEFORE)
-        assert result["email"] == row["email"]
-        assert result["auto_email_sent_at"] == row["auto_email_sent_at"]
-        assert result["auto_email_status"] == row["auto_email_status"]
-        assert result["followup_completed_at"] is None
+        assert result["Email"] == row["Email"]
+        assert result["Email wysłany"] == row["Email wysłany"]
+        assert result["Status emaila"] == row["Status emaila"]
+        assert result["Follow-up wykonany"] is None
 
     def test_year_boundary(self):
         now_before_newyear = datetime(2025, 12, 31, 10, 0, tzinfo=WARSAW_TZ)
         result = apply_followup_logic(
-            _sent_row(auto_email_sent_at="2025-12-30 23:00"),
+            _sent_row(email_wyslany="2025-12-30 23:00"),
             now=now_before_newyear,
         )
-        assert result["followup_due_at"] == "2026-01-02 23:00"
+        assert result["Follow-up od"] == "2026-01-02 23:00"
 
     def test_minute_precision_preserved(self):
         result = apply_followup_logic(
-            _sent_row(auto_email_sent_at="2025-06-01 08:45"),
+            _sent_row(email_wyslany="2025-06-01 08:45"),
             now=NOW_BEFORE,
         )
-        assert result["followup_due_at"] == "2025-06-04 08:45"
+        assert result["Follow-up od"] == "2025-06-04 08:45"
 
     def test_does_not_mutate_input(self):
         row = _sent_row()
@@ -96,50 +101,50 @@ class TestFirstTimeScheduling:
 
 class TestTimeBasedEvaluation:
     def test_before_due_sets_required_no(self):
-        """now < due_at → followup_required must be "NO"."""
-        row = _sent_row(followup_due_at=DUE_AT, followup_required="")
+        """now < due_at → Wymaga follow-upu must be "NO"."""
+        row = _sent_row(followup_od=DUE_AT, wymaga_followup="")
         result = apply_followup_logic(row, now=NOW_BEFORE)
-        assert result["followup_required"] == "NO"
+        assert result["Wymaga follow-upu"] == "NO"
 
     def test_at_due_sets_required_yes(self):
-        """now == due_at (>= boundary) → followup_required must be "YES"."""
-        row = _sent_row(followup_due_at=DUE_AT, followup_required="")
+        """now == due_at (>= boundary) → Wymaga follow-upu must be "YES"."""
+        row = _sent_row(followup_od=DUE_AT, wymaga_followup="")
         result = apply_followup_logic(row, now=NOW_AT_DUE)
-        assert result["followup_required"] == "YES"
+        assert result["Wymaga follow-upu"] == "YES"
 
     def test_after_due_sets_required_yes(self):
-        """now > due_at → followup_required must be "YES"."""
-        row = _sent_row(followup_due_at=DUE_AT, followup_required="")
+        """now > due_at → Wymaga follow-upu must be "YES"."""
+        row = _sent_row(followup_od=DUE_AT, wymaga_followup="")
         result = apply_followup_logic(row, now=NOW_AFTER)
-        assert result["followup_required"] == "YES"
+        assert result["Wymaga follow-upu"] == "YES"
 
     def test_corrects_premature_yes_to_no(self):
-        """If required is "YES" but now < due_at it must be corrected to "NO"."""
-        row = _sent_row(followup_due_at=DUE_AT, followup_required="YES")
+        """If Wymaga follow-upu is "YES" but now < due_at it must be corrected to "NO"."""
+        row = _sent_row(followup_od=DUE_AT, wymaga_followup="YES")
         result = apply_followup_logic(row, now=NOW_BEFORE)
-        assert result["followup_required"] == "NO"
+        assert result["Wymaga follow-upu"] == "NO"
 
     def test_corrects_stale_no_to_yes_after_due(self):
-        """If required is "NO" but now >= due_at it must be flipped to "YES"."""
-        row = _sent_row(followup_due_at=DUE_AT, followup_required="NO")
+        """If Wymaga follow-upu is "NO" but now >= due_at it must be flipped to "YES"."""
+        row = _sent_row(followup_od=DUE_AT, wymaga_followup="NO")
         result = apply_followup_logic(row, now=NOW_AFTER)
-        assert result["followup_required"] == "YES"
+        assert result["Wymaga follow-upu"] == "YES"
 
     def test_does_not_override_existing_due_at(self):
-        """Rule 4 never overwrites an existing due_at value."""
-        row = _sent_row(followup_due_at="2025-09-01 09:00", followup_required="NO")
+        """Rule 4 never overwrites an existing Follow-up od value."""
+        row = _sent_row(followup_od="2025-09-01 09:00", wymaga_followup="NO")
         result = apply_followup_logic(row, now=NOW_BEFORE)
-        assert result["followup_due_at"] == "2025-09-01 09:00"
+        assert result["Follow-up od"] == "2025-09-01 09:00"
 
     def test_custom_due_at_not_recomputed(self):
         """A due date that differs from sent+3d is left untouched."""
         row = _sent_row(
-            auto_email_sent_at=SENT_AT,
-            followup_due_at="2025-06-10 10:00",  # 9 days, not 3
-            followup_required="NO",
+            email_wyslany=SENT_AT,
+            followup_od="2025-06-10 10:00",  # 9 days, not 3
+            wymaga_followup="NO",
         )
         result = apply_followup_logic(row, now=NOW_BEFORE)
-        assert result["followup_due_at"] == "2025-06-10 10:00"
+        assert result["Follow-up od"] == "2025-06-10 10:00"
 
 
 # ---------------------------------------------------------------------------
@@ -149,33 +154,33 @@ class TestTimeBasedEvaluation:
 class TestIdempotency:
     def test_not_due_yet_returns_unchanged(self):
         """Stable state: due_at set, required="NO", now before due → no change."""
-        row = _sent_row(followup_due_at=DUE_AT, followup_required="NO")
+        row = _sent_row(followup_od=DUE_AT, wymaga_followup="NO")
         result = apply_followup_logic(row, now=NOW_BEFORE)
         assert result is row  # identical object — no copy made
 
     def test_past_due_returns_unchanged(self):
         """Stable state: due_at set, required="YES", now after due → no change."""
-        row = _sent_row(followup_due_at=DUE_AT, followup_required="YES")
+        row = _sent_row(followup_od=DUE_AT, wymaga_followup="YES")
         result = apply_followup_logic(row, now=NOW_AFTER)
         assert result == row
 
     def test_twice_gives_same_result_before_due(self):
         """Repeated calls with now before due_at are idempotent."""
-        row = _sent_row(followup_due_at=DUE_AT, followup_required="NO")
+        row = _sent_row(followup_od=DUE_AT, wymaga_followup="NO")
         first = apply_followup_logic(row, now=NOW_BEFORE)
         second = apply_followup_logic(first, now=NOW_BEFORE)
         assert first == second
 
     def test_twice_gives_same_result_after_due(self):
         """Repeated calls with now after due_at are idempotent."""
-        row = _sent_row(followup_due_at=DUE_AT, followup_required="YES")
+        row = _sent_row(followup_od=DUE_AT, wymaga_followup="YES")
         first = apply_followup_logic(row, now=NOW_AFTER)
         second = apply_followup_logic(first, now=NOW_AFTER)
         assert first == second
 
     def test_three_times_gives_same_result(self):
         """Three repeated calls with same now produce identical results."""
-        row = _sent_row(followup_due_at=DUE_AT, followup_required="YES")
+        row = _sent_row(followup_od=DUE_AT, wymaga_followup="YES")
         r1 = apply_followup_logic(row, now=NOW_AFTER)
         r2 = apply_followup_logic(r1, now=NOW_AFTER)
         r3 = apply_followup_logic(r2, now=NOW_AFTER)
@@ -188,30 +193,30 @@ class TestIdempotency:
 
 class TestCompletedCase:
     def test_sets_followup_required_no(self):
-        row = _sent_row(followup_completed_at="2025-06-03 15:00")
+        row = _sent_row(followup_wykonany="2025-06-03 15:00")
         result = apply_followup_logic(row, now=NOW_AFTER)
-        assert result["followup_required"] == "NO"
+        assert result["Wymaga follow-upu"] == "NO"
 
     def test_preserves_completed_at(self):
-        row = _sent_row(followup_completed_at="2025-06-03 15:00")
+        row = _sent_row(followup_wykonany="2025-06-03 15:00")
         result = apply_followup_logic(row, now=NOW_AFTER)
-        assert result["followup_completed_at"] == "2025-06-03 15:00"
+        assert result["Follow-up wykonany"] == "2025-06-03 15:00"
 
     def test_completed_idempotent(self):
-        row = _sent_row(followup_completed_at="2025-06-03 15:00", followup_required="NO")
+        row = _sent_row(followup_wykonany="2025-06-03 15:00", wymaga_followup="NO")
         result = apply_followup_logic(row, now=NOW_AFTER)
         assert result is row
 
     def test_completed_takes_priority_over_missing_due_at(self):
-        """Even when due_at is None, completed status must be applied first."""
-        row = _sent_row(followup_completed_at="2025-06-03 15:00", followup_due_at=None)
+        """Even when Follow-up od is None, completed status must be applied first."""
+        row = _sent_row(followup_wykonany="2025-06-03 15:00", followup_od=None)
         result = apply_followup_logic(row, now=NOW_AFTER)
-        assert result["followup_required"] == "NO"
-        # followup_due_at should NOT be set — completed rule returns early
-        assert result.get("followup_due_at") is None
+        assert result["Wymaga follow-upu"] == "NO"
+        # Follow-up od should NOT be set — completed rule returns early
+        assert result.get("Follow-up od") is None
 
     def test_completed_does_not_mutate_input(self):
-        row = _sent_row(followup_completed_at="2025-06-03 15:00")
+        row = _sent_row(followup_wykonany="2025-06-03 15:00")
         original_copy = dict(row)
         apply_followup_logic(row, now=NOW_AFTER)
         assert dict(row) == original_copy
@@ -223,36 +228,36 @@ class TestCompletedCase:
 
 class TestMissingSentAt:
     def test_none_sent_at_returns_unchanged(self):
-        row = _sent_row(auto_email_sent_at=None)
+        row = _sent_row(email_wyslany=None)
         result = apply_followup_logic(row, now=NOW_BEFORE)
         assert result is row
 
     def test_empty_string_sent_at_returns_unchanged(self):
-        row = _sent_row(auto_email_sent_at="")
+        row = _sent_row(email_wyslany="")
         result = apply_followup_logic(row, now=NOW_BEFORE)
         assert result is row
 
     def test_whitespace_only_sent_at_returns_unchanged(self):
-        row = _sent_row(auto_email_sent_at="   ")
+        row = _sent_row(email_wyslany="   ")
         result = apply_followup_logic(row, now=NOW_BEFORE)
         assert result is row
 
     def test_absent_sent_at_key_returns_unchanged(self):
         row: StatusRow = {
-            "email": "test@example.com",
-            "auto_email_status": "",
-            "followup_due_at": None,
-            "followup_required": "",
-            "followup_completed_at": None,
+            "Email": "test@example.com",
+            "Status emaila": "",
+            "Follow-up od": None,
+            "Wymaga follow-upu": "",
+            "Follow-up wykonany": None,
         }
         result = apply_followup_logic(row, now=NOW_BEFORE)
         assert result is row
 
     def test_none_sent_at_followup_due_not_set(self):
-        row = _sent_row(auto_email_sent_at=None)
+        row = _sent_row(email_wyslany=None)
         result = apply_followup_logic(row, now=NOW_BEFORE)
-        assert result.get("followup_due_at") is None
-        assert result.get("followup_required") == ""
+        assert result.get("Follow-up od") is None
+        assert result.get("Wymaga follow-upu") == ""
 
 
 # ---------------------------------------------------------------------------
@@ -261,35 +266,35 @@ class TestMissingSentAt:
 
 class TestMalformedStateSafety:
     def test_malformed_sent_at_returns_unchanged(self):
-        row = _sent_row(auto_email_sent_at="not-a-date")
+        row = _sent_row(email_wyslany="not-a-date")
         result = apply_followup_logic(row, now=NOW_BEFORE)
         assert result is row
 
     def test_partial_date_no_time_returns_unchanged(self):
-        row = _sent_row(auto_email_sent_at="2025-06-01")
+        row = _sent_row(email_wyslany="2025-06-01")
         result = apply_followup_logic(row, now=NOW_BEFORE)
         assert result is row
 
     def test_iso_with_seconds_returns_unchanged(self):
         """Format with seconds doesn't match _SHEET_DT_FMT — treat as malformed."""
-        row = _sent_row(auto_email_sent_at="2025-06-01 10:00:00")
+        row = _sent_row(email_wyslany="2025-06-01 10:00:00")
         result = apply_followup_logic(row, now=NOW_BEFORE)
         assert result is row
 
     def test_garbage_value_returns_unchanged(self):
-        row = _sent_row(auto_email_sent_at="!!!")
+        row = _sent_row(email_wyslany="!!!")
         result = apply_followup_logic(row, now=NOW_BEFORE)
         assert result is row
 
     def test_malformed_due_at_returns_unchanged(self):
-        """If due_at is present but unparseable, leave the row unchanged."""
-        row = _sent_row(followup_due_at="not-a-date", followup_required="")
+        """If Follow-up od is present but unparseable, leave the row unchanged."""
+        row = _sent_row(followup_od="not-a-date", wymaga_followup="")
         result = apply_followup_logic(row, now=NOW_BEFORE)
         assert result is row
 
     def test_followup_required_is_string_yes(self):
-        """followup_required must be the exact string "YES", not a boolean."""
-        row = _sent_row(followup_due_at=DUE_AT, followup_required="YES")
+        """Wymaga follow-upu must be the exact string "YES", not a boolean."""
+        row = _sent_row(followup_od=DUE_AT, wymaga_followup="YES")
         result = apply_followup_logic(row, now=NOW_AFTER)
-        assert result["followup_required"] == "YES"
-        assert isinstance(result["followup_required"], str)
+        assert result["Wymaga follow-upu"] == "YES"
+        assert isinstance(result["Wymaga follow-upu"], str)

@@ -95,8 +95,8 @@ class TestSendSuccess:
         sheets.update_row.assert_called_once()
         row_num, updates = sheets.update_row.call_args[0]
         assert row_num == 3
-        assert updates["auto_email_status"] == "SENT"
-        assert "auto_email_sent_at" in updates
+        assert updates["Status emaila"] == "SENT"
+        assert "Email wysłany" in updates
 
     @patch("src.stage0.process.get_stage0_attachments_from_env", return_value=FAKE_ATTACHMENTS)
     @patch("src.stage0.process.build_stage0_email")
@@ -140,7 +140,7 @@ class TestSendSuccess:
         process_new_leads(sheets, CALENDAR_URL, **FAKE_SMTP)
 
         _, updates = sheets.update_row.call_args[0]
-        assert updates["auto_email_sent_at"] != ""
+        assert updates["Email wysłany"] != ""
 
 
 # ---------------------------------------------------------------------------
@@ -159,8 +159,8 @@ class TestSendFailure:
 
         sheets.update_row.assert_called_once()
         _, updates = sheets.update_row.call_args[0]
-        assert updates["auto_email_status"].startswith("ERROR:")
-        assert "SMTP down" in updates["auto_email_status"]
+        assert updates["Status emaila"].startswith("ERROR:")
+        assert "SMTP down" in updates["Status emaila"]
 
     @patch("src.stage0.process.get_stage0_attachments_from_env", return_value=FAKE_ATTACHMENTS)
     @patch("src.stage0.process.build_stage0_email")
@@ -172,7 +172,7 @@ class TestSendFailure:
         process_new_leads(sheets, CALENDAR_URL, **FAKE_SMTP)
 
         _, updates = sheets.update_row.call_args[0]
-        assert "auto_email_sent_at" not in updates
+        assert "Email wysłany" not in updates
 
     @patch("src.stage0.process.get_stage0_attachments_from_env", return_value=FAKE_ATTACHMENTS)
     @patch("src.stage0.process.build_stage0_email")

@@ -89,16 +89,16 @@ Module responsibilities:
    input email that does not have one yet. Idempotent.
 3. **Fetch eligible leads** — `get_new_leads()` returns leads that pass `is_eligible_for_send()`:
    - no status row, or
-   - status row with `auto_email_status == "ERROR"` and `auto_email_sent_at` empty.
-   Leads with `auto_email_sent_at` set are never retried regardless of status.
+   - status row with `Status emaila == "ERROR"` and `Email wysłany` empty.
+   Leads with `Email wysłany` set are never retried regardless of status.
 4. **Resolve recipient** — `resolve_recipient_email()` enforces the test mode guard before
    the address reaches the SMTP layer (see [Test Mode](#test-mode)).
 5. **Send email** — `send_email_draft()` delivers via SMTP/STARTTLS with 3 fixed PDF
    attachments and a calendar booking link.
 6. **Update status** —
-   - Success: writes `auto_email_sent_at` (Europe/Warsaw, `YYYY-MM-DD HH:MM`) and
-     `auto_email_status = SENT`.
-   - Failure: writes `auto_email_status = ERROR: <message>`. `auto_email_sent_at` is
+   - Success: writes `Email wysłany` (Europe/Warsaw, `YYYY-MM-DD HH:MM`) and
+     `Status emaila = SENT`.
+   - Failure: writes `Status emaila = ERROR: <message>`. `Email wysłany` is
      intentionally left empty so the lead remains eligible for retry.
 7. **Log summary** — `run_stage0_job()` logs `scanned / new / sent / failed` counters
    after the loop. No email addresses or names appear in logs.
@@ -121,7 +121,7 @@ Behaviour:
 - `resolve_recipient_email()` replaces `to_email` with `TEST_RECIPIENT_EMAIL` in every
   call to `send_email_draft()`. The lead's real address never reaches the SMTP layer.
 - Logs record `"TEST MODE active"` but do not log the test recipient address.
-- Status writes (`auto_email_sent_at`, `auto_email_status`) still happen against the real
+- Status writes (`Email wysłany`, `Status emaila`) still happen against the real
   sheet, so test runs are fully observable without sending to real recipients.
 
 ---
@@ -129,11 +129,11 @@ Behaviour:
 ## Safety Guarantees
 
 - **Idempotent execution** — running the job multiple times in a row produces no duplicate
-  sends. Once `auto_email_sent_at` is set the lead is never re-processed.
-- **Retry only on unconfirmed failure** — a lead with `auto_email_status = ERROR` and an
-  empty `auto_email_sent_at` is re-attempted. A lead with both fields set (edge case) is
+  sends. Once `Email wysłany` is set the lead is never re-processed.
+- **Retry only on unconfirmed failure** — a lead with `Status emaila = ERROR` and an
+  empty `Email wysłany` is re-attempted. A lead with both fields set (edge case) is
   not retried.
-- **No duplicate sends** — `auto_email_sent_at` is written only after a confirmed SMTP
+- **No duplicate sends** — `Email wysłany` is written only after a confirmed SMTP
   delivery. A process crash between send and write leaves the lead retryable, not silently
   dropped.
 - **No PII in logs** — lead email addresses, names, and phone numbers do not appear in any
@@ -158,34 +158,37 @@ Populated externally by Meta Instant Forms export. Not written by this applicati
 
 ### automation_stage0_status (read-write)
 
-Managed by the application. Only system-controlled columns are written.
+Managed by the application. `Lead` and `Email` are set at row creation and never
+overwritten. The remaining columns are system-managed. `Follow-up wykonany` is
+filled manually by the sales team.
 
 | Column | Type | Description |
 |---|---|---|
-| `email` | string | Lead email (key, normalised) |
-| `auto_email_sent_at` | datetime | Timestamp of confirmed delivery (`YYYY-MM-DD HH:MM`, Europe/Warsaw) |
-| `auto_email_status` | string | `SENT` \| `ERROR: <message>` \| empty |
-| `followup_due_at` | datetime | When follow-up becomes due (sent_at + 3 days) |
-| `followup_required` | string | `YES` \| `NO` |
-| `followup_completed_at` | datetime | Timestamp when follow-up was marked done |
+| `Lead` | string | Lead full name or company (copied from input tab at row creation) |
+| `Email` | string | Lead email (logical key, normalised to lowercase) |
+| `Email wysłany` | datetime | Timestamp of confirmed delivery (`YYYY-MM-DD HH:MM`, Europe/Warsaw) |
+| `Status emaila` | string | `SENT` \| `ERROR: <message>` \| empty |
+| `Follow-up od` | datetime | When follow-up becomes due (Email wysłany + 3 days) |
+| `Wymaga follow-upu` | string | `YES` \| `NO` |
+| `Follow-up wykonany` | datetime | Timestamp when follow-up was marked done (written by sales team) |
 
 **Status transitions:**
 
 ```
-[new lead] --> auto_email_sent_at="", auto_email_status=""
+[new lead] --> Email wysłany="", Status emaila=""
     |
-    +-- send OK  --> auto_email_sent_at=<ts>, auto_email_status="SENT"
+    +-- send OK  --> Email wysłany=<ts>, Status emaila="SENT"
     |                    |
-    |                    +--> followup_due_at=<ts+3d>, followup_required="NO"
+    |                    +--> Follow-up od=<ts+3d>, Wymaga follow-upu="NO"
     |                    |                    (scheduled, not yet due)
     |                    |
-    |                    +--> [3 days pass] --> followup_required="YES"
-    |                    |                    (now >= followup_due_at)
+    |                    +--> [3 days pass] --> Wymaga follow-upu="YES"
+    |                    |                    (now >= Follow-up od)
     |                    |
-    |                    +--> [human follows up] --> followup_completed_at=<ts>,
-    |                                                followup_required="NO"
+    |                    +--> [human follows up] --> Follow-up wykonany=<ts>,
+    |                                                Wymaga follow-upu="NO"
     |
-    +-- send ERR --> auto_email_status="ERROR: <msg>"  (eligible for retry)
+    +-- send ERR --> Status emaila="ERROR: <msg>"  (eligible for retry)
 ```
 
 ---
@@ -318,9 +321,9 @@ python -m src.stage0.job
 
 Confirm:
 - Log shows `Stage0 job complete — scanned=N new=M sent=M failed=0`.
-- Status tab shows `auto_email_status = SENT` and `auto_email_sent_at` filled for each
+- Status tab shows `Status emaila = SENT` and `Email wysłany` filled for each
   processed lead.
-- No `ERROR:` entries in `auto_email_status`.
+- No `ERROR:` entries in `Status emaila`.
 
 Enable the scheduler only after this run completes without errors.
 
@@ -330,17 +333,17 @@ After the scheduler is enabled, monitor the following at least twice daily:
 
 - `logs\stage0_scheduler.log` — confirm repeating `job start` / `job complete` pairs at
   the configured interval. No gaps longer than two intervals indicate a missed run.
-- `auto_email_status` column in the status tab — any `ERROR:` value requires investigation.
+- `Status emaila` column in the status tab — any `ERROR:` value requires investigation.
   The affected lead remains retryable; fix the root cause before the next cycle.
 - `failed` counter in log summary — a non-zero value on any run is an alert condition.
 - SMTP rate limits — confirm the sending account has not been throttled or suspended.
 
 ### Ongoing operations
 
-- **Monitor logs** — watch for `ERROR:` lines in `auto_email_status`. Each error
+- **Monitor logs** — watch for `ERROR:` lines in `Status emaila`. Each error
   leaves the lead retryable; manual inspection is recommended before re-running.
 - **Rollback strategy** — the status sheet is the source of truth. To reset a lead,
-  clear `auto_email_sent_at` and `auto_email_status` in the status tab. The next
+  clear `Email wysłany` and `Status emaila` in the status tab. The next
   run will re-process it. Do not modify the input tab.
 
 ---

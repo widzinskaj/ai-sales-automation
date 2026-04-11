@@ -25,8 +25,8 @@ def generate_vocative(full_name_or_company: str) -> str:  # noqa: ARG001
 # ---------------------------------------------------------------------------
 
 def is_new_lead(row: dict[str, str]) -> bool:
-    """A lead is new when it has an email but no auto_email_sent_at yet."""
-    return bool(row.get("email", "").strip()) and not row.get("auto_email_sent_at", "").strip()
+    """A lead is new when it has an email but no Email wysłany yet."""
+    return bool(row.get("Email", "").strip()) and not row.get("Email wysłany", "").strip()
 
 
 def warsaw_now_formatted() -> str:
@@ -35,18 +35,18 @@ def warsaw_now_formatted() -> str:
 
 
 def followup_due_formatted(sent_at_str: str, days: int = 3) -> str:
-    """Compute followup_due_at as *sent_at + days*, returned in the same format."""
+    """Compute Follow-up od as *sent_at + days*, returned in the same format."""
     sent = datetime.strptime(sent_at_str, _SHEET_DT_FMT).replace(tzinfo=WARSAW_TZ)
     due = sent + timedelta(days=days)
     return due.strftime(_SHEET_DT_FMT)
 
 
 def is_followup_due(row: dict[str, str]) -> bool:
-    """True when followup_due_at has passed and followup_required is not YES."""
-    due_str = row.get("followup_due_at", "").strip()
+    """True when Follow-up od has passed and Wymaga follow-upu is not YES."""
+    due_str = row.get("Follow-up od", "").strip()
     if not due_str:
         return False
-    if row.get("followup_required", "").strip().upper() == "YES":
+    if row.get("Wymaga follow-upu", "").strip().upper() == "YES":
         return False
     try:
         due = datetime.strptime(due_str, _SHEET_DT_FMT).replace(tzinfo=WARSAW_TZ)

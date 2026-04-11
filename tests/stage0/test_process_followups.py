@@ -16,7 +16,7 @@ Scenarios covered:
         c) row with empty email is skipped
         d) row where get_status_row_number_by_email returns None is skipped
         e) only changed fields included in patch (partial update)
-        f) followup_required set to NO when followup_completed_at is set
+        f) Wymaga follow-upu set to NO when Follow-up wykonany is set
 
     TestJobFollowupRegression
         - run_stage0_job calls process_followups (regression guard)
@@ -51,17 +51,22 @@ NOW_AFTER = datetime(2025, 3, 14, 10, 0, tzinfo=WARSAW_TZ)   # 1 day after due
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _row(**overrides) -> dict:
-    base = {
-        "email": "lead@example.com",
-        "auto_email_sent_at": SENT_AT,
-        "auto_email_status": "SENT",
-        "followup_due_at": "",
-        "followup_required": "",
-        "followup_completed_at": "",
+def _row(
+    email: str = "lead@example.com",
+    email_wyslany: str = SENT_AT,
+    status_emaila: str = "SENT",
+    followup_od: str = "",
+    wymaga_followup: str = "",
+    followup_wykonany: str = "",
+) -> dict:
+    return {
+        "Email": email,
+        "Email wysłany": email_wyslany,
+        "Status emaila": status_emaila,
+        "Follow-up od": followup_od,
+        "Wymaga follow-upu": wymaga_followup,
+        "Follow-up wykonany": followup_wykonany,
     }
-    base.update(overrides)
-    return base
 
 
 class FakeSheetsClient:
@@ -93,8 +98,8 @@ class FakeSheetsClient:
 class TestProcessFollowups:
 
     def test_update_called_with_correct_patch_when_fields_change(self):
-        """New lead with sent_at and no due_at → first-time scheduling writes
-        followup_due_at=DUE_AT and followup_required="NO" (not yet due)."""
+        """New lead with Email wysłany and no Follow-up od → first-time scheduling writes
+        Follow-up od=DUE_AT and Wymaga follow-upu="NO" (not yet due)."""
         client = FakeSheetsClient([_row()], {"lead@example.com": 2})
 
         updated = process_followups(client, now=NOW_BEFORE)
@@ -103,12 +108,12 @@ class TestProcessFollowups:
         assert len(client.update_calls) == 1
         row_num, patch = client.update_calls[0]
         assert row_num == 2
-        assert patch == {"followup_due_at": DUE_AT, "followup_required": "NO"}
+        assert patch == {"Follow-up od": DUE_AT, "Wymaga follow-upu": "NO"}
 
     def test_update_not_called_when_nothing_changes(self):
-        """Stable state: due_at set, required="YES", now after due → no write."""
+        """Stable state: Follow-up od set, Wymaga follow-upu="YES", now after due → no write."""
         client = FakeSheetsClient(
-            [_row(followup_due_at=DUE_AT, followup_required="YES")],
+            [_row(followup_od=DUE_AT, wymaga_followup="YES")],
             {"lead@example.com": 2},
         )
 
@@ -135,14 +140,14 @@ class TestProcessFollowups:
         assert client.update_calls == []
 
     def test_only_changed_fields_in_patch(self):
-        """When followup_required is already "NO" only followup_due_at appears in patch.
+        """When Wymaga follow-upu is already "NO" only Follow-up od appears in patch.
 
-        Scenario: due_at is empty, required is already "NO".
-        First-time scheduling sets due_at but required stays "NO" → unchanged.
-        Only due_at is written.
+        Scenario: Follow-up od is empty, Wymaga follow-upu is already "NO".
+        First-time scheduling sets Follow-up od but Wymaga follow-upu stays "NO" → unchanged.
+        Only Follow-up od is written.
         """
         client = FakeSheetsClient(
-            [_row(followup_due_at="", followup_required="NO")],
+            [_row(followup_od="", wymaga_followup="NO")],
             {"lead@example.com": 2},
         )
 
@@ -150,15 +155,15 @@ class TestProcessFollowups:
 
         assert updated == 1
         _, patch = client.update_calls[0]
-        assert patch == {"followup_due_at": DUE_AT}  # required unchanged → not in patch
+        assert patch == {"Follow-up od": DUE_AT}  # Wymaga follow-upu unchanged → not in patch
 
     def test_followup_required_set_to_no_when_completed(self):
-        """Lead with followup_completed_at set → followup_required flipped to NO."""
+        """Lead with Follow-up wykonany set → Wymaga follow-upu flipped to NO."""
         client = FakeSheetsClient(
             [_row(
-                followup_due_at=DUE_AT,
-                followup_required="YES",
-                followup_completed_at="2025-03-14 10:00",
+                followup_od=DUE_AT,
+                wymaga_followup="YES",
+                followup_wykonany="2025-03-14 10:00",
             )],
             {"lead@example.com": 2},
         )
@@ -167,12 +172,12 @@ class TestProcessFollowups:
 
         assert updated == 1
         _, patch = client.update_calls[0]
-        assert patch == {"followup_required": "NO"}
+        assert patch == {"Wymaga follow-upu": "NO"}
 
     def test_no_sent_at_row_not_updated(self):
-        """Lead without sent_at is untouched by follow-up logic."""
+        """Lead without Email wysłany is untouched by follow-up logic."""
         client = FakeSheetsClient(
-            [_row(auto_email_sent_at="", auto_email_status="")],
+            [_row(email_wyslany="", status_emaila="")],
             {"lead@example.com": 2},
         )
 
@@ -182,9 +187,9 @@ class TestProcessFollowups:
         assert client.update_calls == []
 
     def test_required_flipped_to_yes_after_due(self):
-        """due_at set, now after due, required still "NO" → flipped to "YES"."""
+        """Follow-up od set, now after due, Wymaga follow-upu still "NO" → flipped to "YES"."""
         client = FakeSheetsClient(
-            [_row(followup_due_at=DUE_AT, followup_required="NO")],
+            [_row(followup_od=DUE_AT, wymaga_followup="NO")],
             {"lead@example.com": 2},
         )
 
@@ -192,16 +197,16 @@ class TestProcessFollowups:
 
         assert updated == 1
         _, patch = client.update_calls[0]
-        assert patch == {"followup_required": "YES"}
+        assert patch == {"Wymaga follow-upu": "YES"}
 
     def test_multiple_rows_independent(self):
         """Two rows: one needs scheduling, one is stable past-due → only one write."""
         rows = [
-            _row(email="new@example.com"),  # no due_at → first-time scheduling
+            _row(email="new@example.com"),  # no Follow-up od → first-time scheduling
             _row(
                 email="done@example.com",
-                followup_due_at=DUE_AT,
-                followup_required="YES",  # stable with NOW_AFTER
+                followup_od=DUE_AT,
+                wymaga_followup="YES",  # stable with NOW_AFTER
             ),
         ]
         client = FakeSheetsClient(
@@ -216,7 +221,7 @@ class TestProcessFollowups:
         row_num, patch = client.update_calls[0]
         assert row_num == 2
         # First-time scheduling always writes "NO" (Rule 3 doesn't depend on now)
-        assert patch == {"followup_due_at": DUE_AT, "followup_required": "NO"}
+        assert patch == {"Follow-up od": DUE_AT, "Wymaga follow-upu": "NO"}
 
 
 # ---------------------------------------------------------------------------
@@ -254,8 +259,8 @@ class TestJobFollowupRegression:
     def test_job_triggers_update_row_for_pending_followup(self, _mock_attach):
         """update_row must be called with follow-up fields when a row needs scheduling.
 
-        First-time scheduling (Rule 3) sets followup_due_at=DUE_AT and
-        followup_required="NO".  This is deterministic — Rule 3 does not
+        First-time scheduling (Rule 3) sets Follow-up od=DUE_AT and
+        Wymaga follow-upu="NO".  This is deterministic — Rule 3 does not
         compare against the current time.
         """
         client = self._make_sheets_client([_row()])
@@ -264,13 +269,13 @@ class TestJobFollowupRegression:
 
         followup_calls = [
             call for call in client.update_row.call_args_list
-            if "followup_due_at" in call.args[1] or "followup_required" in call.args[1]
+            if "Follow-up od" in call.args[1] or "Wymaga follow-upu" in call.args[1]
         ]
         assert followup_calls, (
             "run_stage0_job did not write any follow-up fields — "
             "process_followups was likely not called"
         )
         _, patch = followup_calls[0].args
-        assert patch["followup_due_at"] == DUE_AT
+        assert patch["Follow-up od"] == DUE_AT
         # Rule 3 always sets "NO" on first scheduling (not yet due)
-        assert patch["followup_required"] == "NO"
+        assert patch["Wymaga follow-upu"] == "NO"

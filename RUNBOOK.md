@@ -18,7 +18,7 @@ Stage 0 provides automated first-touch email handling for inbound sales leads.
   calendar booking link.
 - Records the send result in the `automation_stage0_status` tab (timestamp + status).
 - After 3 days without a human response, marks the lead as requiring follow-up
-  (`followup_required = YES`) so the sales team can act.
+  (`Wymaga follow-upu = YES`) so the sales team can act.
 
 **What it does not do:**
 
@@ -75,8 +75,8 @@ For a technical operator who needs to confirm Stage 0 is alive:
   `Stage0 job start` / `Stage0 job complete` lines with timestamps advancing at the configured interval.
 - **Last run succeeded:** Task Scheduler → find the task → **Last Run Result** = `0x0`.
 - **Test mode is active:** Each run's log block must contain a `TEST MODE active` line.
-- **Sheets status is written:** Open `automation_stage0_status` — check that `auto_email_sent_at`
-  and `auto_email_status` are filled for processed leads.
+- **Sheets status is written:** Open `automation_stage0_status` — check that `Email wysłany`
+  and `Status emaila` are filled for processed leads.
 
 For full setup and troubleshooting see [section 14](#14-windows-task-scheduler-setup) and [section 12](#12-troubleshooting).
 
@@ -101,17 +101,21 @@ writes to it.
 
 **Tab: `automation_stage0_status`** (read-write)
 
-| Column header | Notes |
-|---|---|
-| `email` | Lead email address (key — must be unique per row) |
-| `auto_email_sent_at` | Filled by the system on successful send |
-| `auto_email_status` | Filled by the system on every run attempt |
-| `followup_due_at` | Filled by the system 3 days after successful send |
-| `followup_required` | `YES` / `NO` — managed by the system |
-| `followup_completed_at` | Filled manually by the sales team when follow-up is done |
+The operator must create this tab manually with the following headers in row 1,
+**in exact order and spelling** (copy-paste recommended):
 
-Create this tab manually before the first run. The system creates rows automatically but
-will fail if the tab or its headers do not exist.
+| Column header | Who writes it | Notes |
+|---|---|---|
+| `Lead` | System (once, at row creation) | Lead full name or company — copied from input tab |
+| `Email` | System (once, at row creation) | Lead email address — logical key, unique per row |
+| `Email wysłany` | System | Filled on successful send (`YYYY-MM-DD HH:MM`, Europe/Warsaw) |
+| `Status emaila` | System | `SENT` \| `ERROR: <message>` \| empty |
+| `Follow-up od` | System | Filled 3 days after successful send |
+| `Wymaga follow-upu` | System | `YES` / `NO` |
+| `Follow-up wykonany` | Sales team (manual) | Filled when follow-up is completed |
+
+The system creates rows automatically but will fail if the tab does not exist or any
+header is misspelled. Headers are case-sensitive and space-sensitive.
 
 ### SMTP
 
@@ -245,7 +249,7 @@ python -m src.stage0.job
 
 ### Idempotency guarantee
 
-The job is safe to run multiple times. Once `auto_email_sent_at` is written for a lead,
+The job is safe to run multiple times. Once `Email wysłany` is written for a lead,
 that lead is never processed again — regardless of how many times the scheduler fires.
 Running the job more often than needed causes no harm.
 
@@ -271,63 +275,64 @@ be used. No persistent process or message queue is required.
 
 All status information is in the `automation_stage0_status` tab.
 
-### `auto_email_sent_at`
+### `Email wysłany`
 
 | Value | Meaning |
 |---|---|
 | Empty | Email has not been successfully delivered yet. Lead is eligible for processing. |
 | `YYYY-MM-DD HH:MM` | Email was confirmed delivered at this timestamp (Europe/Warsaw). Lead will not be processed again. |
 
-### `auto_email_status`
+### `Status emaila`
 
 | Value | Meaning |
 |---|---|
 | Empty | No send attempt has been made yet. |
 | `SENT` | Email delivered successfully. |
-| `ERROR: <message>` | Last send attempt failed. `auto_email_sent_at` is empty — lead will be retried on next run. |
+| `ERROR: <message>` | Last send attempt failed. `Email wysłany` is empty — lead will be retried on next run. |
 
-A lead with `auto_email_sent_at` set is **never retried**, even if `auto_email_status`
+A lead with `Email wysłany` set is **never retried**, even if `Status emaila`
 shows `ERROR`. Both fields being set simultaneously is an edge case that is handled
 conservatively (no retry).
 
-### `followup_due_at`
+### `Follow-up od`
 
-Set automatically to `sent_at + 3 days` after a successful send. Empty means the email
-has not been sent yet, or the follow-up logic has not run since the send.
+Set automatically to `Email wysłany + 3 days` after a successful send. Empty means the
+email has not been sent yet, or the follow-up logic has not run since the send.
 
-### `followup_required`
+### `Wymaga follow-upu`
 
 | Value | Meaning |
 |---|---|
 | `YES` | The 3-day window has passed; the sales team should follow up manually. |
 | `NO` | Follow-up is either not yet due, or has already been completed. |
 
-The sales team sets `followup_completed_at` manually when the follow-up is done. The
-system then sets `followup_required = NO` on the next run.
+The sales team sets `Follow-up wykonany` manually when the follow-up is done. The
+system then sets `Wymaga follow-upu = NO` on the next run.
 
 ### Typical row lifecycle
 
 ```
 [lead appears in input sheet]
-    auto_email_sent_at = ""    auto_email_status = ""
-    followup_due_at = ""       followup_required = ""
+    Lead = "Jan Kowalski"   Email = "jan@example.com"
+    Email wysłany = ""      Status emaila = ""
+    Follow-up od = ""       Wymaga follow-upu = ""
 
 [job runs — send succeeds]
-    auto_email_sent_at = "2025-03-10 09:15"
-    auto_email_status  = "SENT"
-    followup_due_at    = "2025-03-13 09:15"
-    followup_required  = "NO"     <- scheduled, not yet due
+    Email wysłany   = "2025-03-10 09:15"
+    Status emaila   = "SENT"
+    Follow-up od    = "2025-03-13 09:15"
+    Wymaga follow-upu = "NO"     <- scheduled, not yet due
 
-[job runs — 3 days pass, now >= followup_due_at]
-    followup_required  = "YES"    <- sales team should follow up
+[job runs — 3 days pass, now >= Follow-up od]
+    Wymaga follow-upu = "YES"    <- sales team should follow up
 
-[sales team follows up -> sets followup_completed_at manually]
+[sales team follows up -> sets Follow-up wykonany manually]
 [next job run]
-    followup_required  = "NO"
+    Wymaga follow-upu = "NO"
 
 [job runs — send fails]
-    auto_email_sent_at = ""
-    auto_email_status  = "ERROR: [Errno 111] Connection refused"
+    Email wysłany = ""
+    Status emaila = "ERROR: [Errno 111] Connection refused"
     (lead will be retried on next run)
 ```
 
@@ -371,9 +376,9 @@ python -m src.stage0.job
 
 Confirm:
 - Log shows `Stage0 job complete — scanned=N new=M sent=M failed=0`.
-- Status tab shows `auto_email_status = SENT` and `auto_email_sent_at` filled for each
+- Status tab shows `Status emaila = SENT` and `Email wysłany` filled for each
   processed lead.
-- No `ERROR:` entries in `auto_email_status`.
+- No `ERROR:` entries in `Status emaila`.
 
 **Enable the scheduler only after this run completes without errors.**
 
@@ -385,8 +390,8 @@ If a production run produces unexpected results:
    set `STAGE0_TEST_MODE=1` in `.env` and restart/redeploy the scheduler.
 2. If you switched to the wrong spreadsheet, revert `GOOGLE_SHEET_ID` to the previous value.
 3. To reset a specific lead (so it will be re-processed on the next run):
-   - In the `automation_stage0_status` tab, clear the `auto_email_sent_at` and
-     `auto_email_status` cells for that lead's row.
+   - In the `automation_stage0_status` tab, clear the `Email wysłany` and
+     `Status emaila` cells for that lead's row.
    - Do **not** modify the `automation_stage0_input` tab.
 4. Investigate the root cause before re-running in production mode.
 
@@ -407,10 +412,10 @@ Run through this checklist after enabling the scheduler in production for the fi
 
 ### Google Sheets status tab
 
-- [ ] `auto_email_status` column contains only `SENT` or is empty for unprocessed leads.
+- [ ] `Status emaila` column contains only `SENT` or is empty for unprocessed leads.
 - [ ] No `ERROR:` values. If present, note the error message and investigate root cause before the next cycle.
-- [ ] `auto_email_sent_at` is filled for every lead that received an email.
-- [ ] `followup_due_at` is set correctly to `sent_at + 3 days` for all sent leads.
+- [ ] `Email wysłany` is filled for every lead that received an email.
+- [ ] `Follow-up od` is set correctly to `Email wysłany + 3 days` for all sent leads.
 
 ### SMTP
 
@@ -422,7 +427,7 @@ Run through this checklist after enabling the scheduler in production for the fi
 If any of the above checks fail and the root cause is not immediately clear:
 1. Set `STAGE0_TEST_MODE=1` in `.env` to stop real sends immediately.
 2. Preserve the full `logs\stage0_scheduler.log` file.
-3. Check `auto_email_status` in the status tab for error details.
+3. Check `Status emaila` in the status tab for error details.
 4. Investigate and resolve before re-enabling production mode.
 
 ---
@@ -466,7 +471,7 @@ variables. Re-read section 6.
 ### SMTP error
 
 **Symptom:** `SMTPAuthenticationError`, `ConnectionRefusedError`, or `TimeoutError` during
-send. The lead's row will show `auto_email_status = ERROR: <message>`.
+send. The lead's row will show `Status emaila = ERROR: <message>`.
 
 **What to check:**
 1. `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` are correct.
@@ -516,7 +521,7 @@ Stage0 job complete — scanned=12 new=3 sent=3 failed=0
 ```
 
 Log lines never contain email addresses, names, or phone numbers. If `failed` is
-non-zero, check the `auto_email_status` column in the status tab for `ERROR:` entries —
+non-zero, check the `Status emaila` column in the status tab for `ERROR:` entries —
 the error message is written there.
 
 ---
@@ -822,8 +827,8 @@ eligible for processing. No email should arrive at any real lead address.
 
 Open the `automation_stage0_status` tab. For each lead that was processed during the
 drill:
-- `auto_email_sent_at` should contain a timestamp.
-- `auto_email_status` should be `SENT`.
+- `Email wysłany` should contain a timestamp.
+- `Status emaila` should be `SENT`.
 
 The status sheet is written even in test mode, so the drill is a full end-to-end
 verification of the pipeline (credentials, SMTP, Sheets write) with zero risk to real
@@ -854,10 +859,10 @@ in `automation_stage0_input`.
   ```
   where `M >= 1` for a new lead.
 - [ ] Open `automation_stage0_status`. Confirm the lead's row has:
-  - `auto_email_sent_at` filled with a timestamp.
-  - `auto_email_status = SENT`.
-  - `followup_due_at` filled with `sent_at + 3 days`.
-  - `followup_required = NO` (not yet due).
+  - `Email wysłany` filled with a timestamp.
+  - `Status emaila = SENT`.
+  - `Follow-up od` filled with `sent_at + 3 days`.
+  - `Wymaga follow-upu = NO` (not yet due).
 - [ ] Confirm the lead received the email at their real address (or at
   `TEST_RECIPIENT_EMAIL` in test mode).
 - [ ] Trigger manual run again (cycle 2). Confirm in log:
@@ -884,7 +889,7 @@ in `automation_stage0_input`.
 
 #### Phase 3 — Follow-up flag verification (cycle 8)
 
-- [ ] Locate a row in `automation_stage0_status` where `followup_due_at` is in the past
+- [ ] Locate a row in `automation_stage0_status` where `Follow-up od` is in the past
   (i.e. the lead was sent the auto-reply more than 3 days ago).
 - [ ] Trigger a manual run and confirm the log shows:
   ```
@@ -892,12 +897,12 @@ in `automation_stage0_input`.
   ```
   (or higher, depending on how many leads are past due).
 - [ ] In `automation_stage0_status`, confirm the lead's row now shows:
-  - `followup_required = YES`.
-- [ ] Simulate completion: manually enter a timestamp in `followup_completed_at` for that
+  - `Wymaga follow-upu = YES`.
+- [ ] Simulate completion: manually enter a timestamp in `Follow-up wykonany` for that
   row.
 - [ ] Trigger another run (cycle 9) and confirm:
   - Log: `Stage0 follow-up step complete — updated=1`.
-  - Sheet: `followup_required = NO`.
+  - Sheet: `Wymaga follow-upu = NO`.
 
 ---
 

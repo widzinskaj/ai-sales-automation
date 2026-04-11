@@ -9,13 +9,17 @@ INPUT_HEADERS = [
     "Telefon dodatkowy",
 ]
 
+# Column headers for the status tab, in order.
+# "Lead" is written once at row creation and is not a system-managed column.
+# The logical key is "Email" (unique per lead).
 STATUS_HEADERS = [
-    "email",
-    "auto_email_sent_at",
-    "auto_email_status",
-    "followup_due_at",
-    "followup_required",
-    "followup_completed_at",
+    "Lead",
+    "Email",
+    "Email wysłany",
+    "Status emaila",
+    "Follow-up od",
+    "Wymaga follow-upu",
+    "Follow-up wykonany",
 ]
 
 
@@ -31,16 +35,17 @@ SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
 ]
 
-# System-managed columns — only these are written by the application.
+# System-managed columns — only these are written by the application via update_row().
+# "Lead" and "Email" are set once at row creation (append_row) and never overwritten.
 SYSTEM_COLUMNS = frozenset({
-    "auto_email_sent_at",
-    "auto_email_status",
-    "followup_due_at",
-    "followup_required",
+    "Email wysłany",
+    "Status emaila",
+    "Follow-up od",
+    "Wymaga follow-upu",
 })
 
 # Columns that hold datetime values and should be formatted in the sheet.
-DATE_COLUMNS = ("auto_email_sent_at", "followup_due_at")
+DATE_COLUMNS = ("Email wysłany", "Follow-up od")
 
 # Google Sheets number format pattern for datetime columns.
 _DATE_NUMBER_FORMAT = {"type": "DATE_TIME", "pattern": "yyyy-mm-dd hh:mm"}
@@ -52,21 +57,21 @@ def is_eligible_for_send(status_row: dict[str, str] | None) -> bool:
     Rules (in evaluation order):
 
     1. No status row at all → eligible (brand-new lead).
-    2. ``auto_email_sent_at`` is non-empty → **not** eligible.
+    2. ``Email wysłany`` is non-empty → **not** eligible.
        A recorded timestamp means the email was delivered; we never resend
-       even when ``auto_email_status`` is still "ERROR".
-    3. ``auto_email_status`` is "" (fresh) or starts with "ERROR" → eligible.
+       even when ``Status emaila`` is still "ERROR".
+    3. ``Status emaila`` is "" (fresh) or starts with "ERROR" → eligible.
        An empty status means the row was just created and never attempted.
-       An ERROR status with no ``sent_at`` means the previous run failed
+       An ERROR status with no ``Email wysłany`` means the previous run failed
        before confirming delivery — retry is safe.
     4. Any other status (e.g. "SENT" with a missing timestamp due to a bug,
        or a future status value) → not eligible.
     """
     if status_row is None:
         return True
-    if str(status_row.get("auto_email_sent_at", "")).strip():
+    if str(status_row.get("Email wysłany", "")).strip():
         return False  # Rule 2: delivery confirmed — never resend
-    status = str(status_row.get("auto_email_status", "")).strip()
+    status = str(status_row.get("Status emaila", "")).strip()
     return status == "" or status.startswith("ERROR")
 
 
@@ -117,7 +122,7 @@ class SheetsClient:
         """Return every data row as a dict keyed by header name."""
         records = self._ws_status.get_all_records(head=1, default_blank="")
         return [{k: str(v) for k, v in row.items()} for row in records]
-    
+
     def read_status_rows(self) -> list[dict[str, str]]:
         """Return every status row as a dict keyed by header name."""
         records = self._ws_status.get_all_records(head=1, default_blank="")
@@ -130,7 +135,7 @@ class SheetsClient:
         mapping: dict[str, dict[str, str]] = {}
 
         for row in rows:
-            email = str(row.get("email", "")).strip().lower()
+            email = str(row.get("Email", "")).strip().lower()
             if not email:
                 continue
             mapping[email] = row
@@ -155,7 +160,11 @@ class SheetsClient:
         return new_rows
 
     def ensure_status_rows_exist(self) -> None:
-        """Ensure every input email has a row in status sheet."""
+        """Ensure every input email has a row in the status sheet.
+
+        New rows are created with Lead and Email pre-populated.
+        The logical key is Email (unique per lead).
+        """
         input_rows = self.read_input_rows()
         status_index = self.get_status_index_by_email()
 
@@ -165,15 +174,16 @@ class SheetsClient:
                 continue
 
             if email not in status_index:
-                # append new status row
+                lead_name = str(row.get("Imię i nazwisko / Firma", "")).strip()
                 self._ws_status.append_row(
                     [
-                        email,  # email
-                        "",     # auto_email_sent_at
-                        "",     # auto_email_status
-                        "",     # followup_due_at
-                        "",     # followup_required
-                        "",     # followup_completed_at
+                        lead_name,  # Lead
+                        email,      # Email
+                        "",         # Email wysłany
+                        "",         # Status emaila
+                        "",         # Follow-up od
+                        "",         # Wymaga follow-upu
+                        "",         # Follow-up wykonany
                     ],
                     value_input_option="USER_ENTERED",
                 )
@@ -254,8 +264,8 @@ class SheetsClient:
         Header is row 1; first data row is row 2.
         """
         email_norm = email.strip().lower()
-        col_idx = self._col_index("email")                  # 1-based for gspread
-        col_values = self._ws_status.col_values(col_idx)    # header at index 0
+        col_idx = self._col_index("Email")               # 1-based for gspread
+        col_values = self._ws_status.col_values(col_idx) # header at index 0
         for i, cell in enumerate(col_values):
             if i == 0:  # skip header
                 continue
@@ -269,7 +279,7 @@ class SheetsClient:
             return self._headers_status.index(col_name) + 1
         except ValueError:
             raise KeyError(f"Column '{col_name}' not found in sheet headers: {self._headers_status}")
-            
+
     def _validate_headers(self, actual: list[str], expected: list[str], tab_name: str) -> None:
         actual_clean = [h.strip() for h in actual if h is not None]
         expected_clean = [h.strip() for h in expected]
@@ -279,4 +289,3 @@ class SheetsClient:
                 f"Invalid headers in tab '{tab_name}'. "
                 f"Expected: {expected_clean}. Got: {actual_clean}."
             )
-

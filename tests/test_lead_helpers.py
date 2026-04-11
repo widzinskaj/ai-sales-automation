@@ -21,26 +21,26 @@ from src.core.lead_helpers import (
 
 class TestIsNewLead:
     def test_new_lead_with_email_and_no_sent(self):
-        row = {"email": "x@example.com", "auto_email_sent_at": ""}
+        row = {"Email": "x@example.com", "Email wysłany": ""}
         assert is_new_lead(row) is True
 
     def test_already_processed(self):
-        row = {"email": "x@example.com", "auto_email_sent_at": "2025-01-01 10:00"}
+        row = {"Email": "x@example.com", "Email wysłany": "2025-01-01 10:00"}
         assert is_new_lead(row) is False
 
     def test_missing_email(self):
-        row = {"email": "", "auto_email_sent_at": ""}
+        row = {"Email": "", "Email wysłany": ""}
         assert is_new_lead(row) is False
 
     def test_whitespace_only_email(self):
-        row = {"email": "  ", "auto_email_sent_at": ""}
+        row = {"Email": "  ", "Email wysłany": ""}
         assert is_new_lead(row) is False
 
     def test_missing_keys_treated_as_empty(self):
         assert is_new_lead({}) is False
 
     def test_whitespace_only_sent_at_is_new(self):
-        row = {"email": "x@example.com", "auto_email_sent_at": "  "}
+        row = {"Email": "x@example.com", "Email wysłany": "  "}
         assert is_new_lead(row) is True
 
 
@@ -91,30 +91,30 @@ class TestIsFollowupDue:
         return (datetime.now(WARSAW_TZ) + timedelta(days=days)).strftime("%Y-%m-%d %H:%M")
 
     def test_due_in_past_not_yet_marked(self):
-        row = {"followup_due_at": self._past(), "followup_required": ""}
+        row = {"Follow-up od": self._past(), "Wymaga follow-upu": ""}
         assert is_followup_due(row) is True
 
     def test_due_in_future(self):
-        row = {"followup_due_at": self._future(), "followup_required": ""}
+        row = {"Follow-up od": self._future(), "Wymaga follow-upu": ""}
         assert is_followup_due(row) is False
 
     def test_already_marked_yes(self):
-        row = {"followup_due_at": self._past(), "followup_required": "YES"}
+        row = {"Follow-up od": self._past(), "Wymaga follow-upu": "YES"}
         assert is_followup_due(row) is False
 
     def test_empty_due_at(self):
-        row = {"followup_due_at": "", "followup_required": ""}
+        row = {"Follow-up od": "", "Wymaga follow-upu": ""}
         assert is_followup_due(row) is False
 
     def test_missing_keys(self):
         assert is_followup_due({}) is False
 
     def test_case_insensitive_yes(self):
-        row = {"followup_due_at": self._past(), "followup_required": "yes"}
+        row = {"Follow-up od": self._past(), "Wymaga follow-upu": "yes"}
         assert is_followup_due(row) is False
 
     def test_no_value_not_blocking(self):
-        row = {"followup_due_at": self._past(), "followup_required": "NO"}
+        row = {"Follow-up od": self._past(), "Wymaga follow-upu": "NO"}
         assert is_followup_due(row) is True
 
 

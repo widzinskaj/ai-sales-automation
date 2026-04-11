@@ -53,31 +53,31 @@ class TestIsEligibleForSend:
 
     def test_fresh_row_both_fields_empty_is_eligible(self):
         # Row was created by ensure_status_rows_exist() but never processed.
-        row = {"auto_email_sent_at": "", "auto_email_status": ""}
+        row = {"Email wysłany": "", "Status emaila": ""}
         assert is_eligible_for_send(row) is True
 
     def test_error_without_sent_at_is_eligible(self):
-        # Previous run wrote ERROR but did NOT write sent_at → safe to retry.
-        row = {"auto_email_sent_at": "", "auto_email_status": "ERROR: SMTP timeout"}
+        # Previous run wrote ERROR but did NOT write Email wysłany → safe to retry.
+        row = {"Email wysłany": "", "Status emaila": "ERROR: SMTP timeout"}
         assert is_eligible_for_send(row) is True
 
     def test_error_with_sent_at_is_not_eligible(self):
-        # sent_at is set — delivery was confirmed; ignore ERROR status.
-        row = {"auto_email_sent_at": "2025-06-01 10:00", "auto_email_status": "ERROR: late write"}
+        # Email wysłany is set — delivery was confirmed; ignore ERROR status.
+        row = {"Email wysłany": "2025-06-01 10:00", "Status emaila": "ERROR: late write"}
         assert is_eligible_for_send(row) is False
 
     def test_sent_with_sent_at_is_not_eligible(self):
-        row = {"auto_email_sent_at": "2025-06-01 10:00", "auto_email_status": "SENT"}
+        row = {"Email wysłany": "2025-06-01 10:00", "Status emaila": "SENT"}
         assert is_eligible_for_send(row) is False
 
     def test_sent_at_whitespace_only_is_eligible(self):
         # Whitespace-only counts as empty — eligible.
-        row = {"auto_email_sent_at": "   ", "auto_email_status": ""}
+        row = {"Email wysłany": "   ", "Status emaila": ""}
         assert is_eligible_for_send(row) is True
 
     def test_unknown_status_without_sent_at_is_not_eligible(self):
         # A future/unknown status value — conservative: do not retry.
-        row = {"auto_email_sent_at": "", "auto_email_status": "PENDING"}
+        row = {"Email wysłany": "", "Status emaila": "PENDING"}
         assert is_eligible_for_send(row) is False
 
     def test_empty_dict_is_eligible(self):
@@ -86,7 +86,7 @@ class TestIsEligibleForSend:
 
     def test_error_prefix_matched_case_sensitively(self):
         # Only "ERROR" prefix (uppercase) is treated as retryable.
-        row = {"auto_email_sent_at": "", "auto_email_status": "error: smtp"}
+        row = {"Email wysłany": "", "Status emaila": "error: smtp"}
         assert is_eligible_for_send(row) is False
 
 
@@ -101,7 +101,7 @@ class TestRetryLogic:
     @patch("src.stage0.process.build_stage0_email")
     @patch("src.stage0.process.send_email_draft")
     def test_error_with_sent_at_does_not_retry(self, mock_send, mock_build, mock_attach):
-        """Lead with ERROR status but auto_email_sent_at already set → NOT retried.
+        """Lead with ERROR status but Email wysłany already set → NOT retried.
 
         get_new_leads() correctly filters out the lead because is_eligible_for_send()
         returns False when sent_at is present. The mock reflects that filtered result.
@@ -120,11 +120,11 @@ class TestRetryLogic:
     @patch("src.stage0.process.build_stage0_email")
     @patch("src.stage0.process.send_email_draft")
     def test_error_without_sent_at_retries_once_then_stops(self, mock_send, mock_build, mock_attach):
-        """Lead with ERROR and no sent_at → email sent on first run, skipped on second.
+        """Lead with ERROR and no Email wysłany → email sent on first run, skipped on second.
 
-        Run 1: get_new_leads() returns the lead (eligible — no sent_at).
-               Pipeline sends the email and writes auto_email_sent_at.
-        Run 2: get_new_leads() returns [] (sent_at now set → not eligible).
+        Run 1: get_new_leads() returns the lead (eligible — no Email wysłany).
+               Pipeline sends the email and writes Email wysłany.
+        Run 2: get_new_leads() returns [] (Email wysłany now set → not eligible).
                Pipeline does nothing. Total send count stays at 1.
         """
         mock_build.return_value = MagicMock(subject="s")
@@ -141,7 +141,7 @@ class TestRetryLogic:
         assert first.emails_sent == 1
         assert second.emails_sent == 0
 
-        # auto_email_sent_at was written during the first (successful) run.
+        # Email wysłany was written during the first (successful) run.
         _, updates = sheets.update_row.call_args_list[0][0]
-        assert "auto_email_sent_at" in updates
-        assert updates["auto_email_sent_at"] != ""
+        assert "Email wysłany" in updates
+        assert updates["Email wysłany"] != ""

@@ -62,7 +62,7 @@ class TestJobIdempotency:
     @patch("src.stage0.process.build_stage0_email")
     @patch("src.stage0.process.send_email_draft")
     def test_second_run_sends_nothing(self, mock_send, mock_build, mock_attach):
-        """After the first run auto_email_sent_at is written; the second run
+        """After the first run Email wysłany is written; the second run
         must see no eligible leads and make zero additional send calls."""
         mock_build.return_value = MagicMock(subject="s")
         sheets = _make_sheets(

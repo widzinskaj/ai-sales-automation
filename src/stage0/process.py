@@ -44,7 +44,7 @@ def process_new_leads(
     Side effects:
     - calls ensure_status_rows_exist() (structural sync, idempotent)
     - sends SMTP email per new lead
-    - writes auto_email_sent_at / auto_email_status to status sheet
+    - writes Email wysłany / Status emaila to status sheet
 
     When *test_mode* is True every outbound email is redirected to
     *test_recipient*.  If *test_recipient* is missing the function raises
@@ -110,14 +110,14 @@ def process_new_leads(
         except Exception as exc:
             error_msg = str(exc)[:120]
             logger.error("Failed to send email to %s: %s", email, error_msg)
-            sheets_client.update_row(row_number, {"auto_email_status": f"ERROR: {error_msg}"})
+            sheets_client.update_row(row_number, {"Status emaila": f"ERROR: {error_msg}"})
             emails_failed += 1
             continue
 
         sent_at = warsaw_now_formatted()
         sheets_client.update_row(row_number, {
-            "auto_email_sent_at": sent_at,
-            "auto_email_status": "SENT",
+            "Email wysłany": sent_at,
+            "Status emaila": "SENT",
         })
         emails_sent += 1
 
@@ -137,7 +137,7 @@ def process_new_leads(
     )
 
 
-_FOLLOWUP_FIELDS = ("followup_due_at", "followup_required")
+_FOLLOWUP_FIELDS = ("Follow-up od", "Wymaga follow-upu")
 
 
 def process_followups(
@@ -150,7 +150,7 @@ def process_followups(
     For each status row with a valid email:
     - Computes the desired state via apply_followup_logic().
     - Builds a patch containing only the fields that changed
-      (followup_due_at, followup_required).
+      (Follow-up od, Wymaga follow-upu).
     - Writes the patch via update_row() when non-empty.
 
     Arguments:
@@ -166,7 +166,7 @@ def process_followups(
     updated = 0
 
     for row in rows:
-        email = str(row.get("email", "")).strip().lower()
+        email = str(row.get("Email", "")).strip().lower()
         if not email:
             continue
 

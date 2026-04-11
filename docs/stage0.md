@@ -45,22 +45,24 @@ Populated externally by manual Meta Lead Ads export. Not written by this applica
 
 #### automation_stage0_status (read-write)
 
-Managed by the application. Only system-controlled columns are written. The
-`followup_completed_at` column is filled manually by the sales team.
+Managed by the application. `Lead` and `Email` are set once at row creation and never
+overwritten. The remaining columns are system-managed. `Follow-up wykonany` is filled
+manually by the sales team.
 
 | Column | Type | Description |
 |---|---|---|
-| `email` | string | Lead email (key, normalised to lowercase) |
-| `auto_email_sent_at` | datetime | Timestamp of confirmed delivery (`YYYY-MM-DD HH:MM`, Europe/Warsaw) |
-| `auto_email_status` | string | `SENT` \| `ERROR: <message>` \| empty |
-| `followup_due_at` | datetime | When follow-up becomes due (sent_at + 3 days) |
-| `followup_required` | string | `YES` \| `NO` |
-| `followup_completed_at` | datetime | Timestamp when follow-up was marked done (written by sales team) |
+| `Lead` | string | Lead full name or company (copied from input tab at row creation) |
+| `Email` | string | Lead email (logical key, normalised to lowercase) |
+| `Email wysłany` | datetime | Timestamp of confirmed delivery (`YYYY-MM-DD HH:MM`, Europe/Warsaw) |
+| `Status emaila` | string | `SENT` \| `ERROR: <message>` \| empty |
+| `Follow-up od` | datetime | When follow-up becomes due (Email wysłany + 3 days) |
+| `Wymaga follow-upu` | string | `YES` \| `NO` |
+| `Follow-up wykonany` | datetime | Timestamp when follow-up was marked done (written by sales team) |
 
 ### Idempotency
 
-The system uses `auto_email_sent_at` as the single source of truth for whether
-a lead has been processed. A row is picked up only if `auto_email_sent_at` is
+The system uses `Email wysłany` as the single source of truth for whether
+a lead has been processed. A row is picked up only if `Email wysłany` is
 empty. Re-running the workflow is safe — already-processed rows are skipped without
 any side effects.
 
@@ -73,7 +75,7 @@ Google Sheets (new lead row added by manual Meta Lead Ads export)
         │
         ▼
   python -m src.stage0.job
-  ├── Read rows where auto_email_sent_at is empty
+  ├── Read rows where Email wysłany is empty
   │         │
   │         ▼
   │   Send auto-reply email
@@ -81,14 +83,14 @@ Google Sheets (new lead row added by manual Meta Lead Ads export)
   │   └── calendar booking link (CALENDAR_URL — static, no Calendar API)
   │         │
   │         ▼
-  │   Update row: set auto_email_sent_at, auto_email_status,
-  │               compute followup_due_at (sent_at + 3 days),
-  │               followup_required = NO
+  │   Update row: set Email wysłany, Status emaila,
+  │               compute Follow-up od (sent_at + 3 days),
+  │               Wymaga follow-upu = NO
   │
-  └── Check rows where followup_due_at has passed
+  └── Check rows where Follow-up od has passed
               │
               ▼
-        Update row: set followup_required → YES
+        Update row: set Wymaga follow-upu → YES
 ```
 
 **No follow-up email is sent.** The flag is informational — the sales team decides
