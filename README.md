@@ -14,10 +14,32 @@ Design constraints:
 
 ---
 
+## Deployment Model
+
+Stage 0 runs on a **dedicated client host** (a Windows machine or server) managed by a
+**technical operator**. The business user has no access to the host, repository, code,
+`.env` file, or secrets.
+
+| Role | Responsibilities |
+|---|---|
+| **Technical operator** | Deploy the repository, configure `.env`, set up the scheduler, monitor logs, apply updates, handle incidents. |
+| **Business user** | Work exclusively in Google Sheets — review the status tab and mark follow-ups complete. |
+
+**What the business user never touches:**
+- The host machine or its file system.
+- The repository or any code.
+- The `.env` file or any secrets.
+- SMTP credentials or the Google service account.
+
+**Runtime boundary:** The scheduler, the Python process, and all credentials live on
+the client host. Google Sheets is the only interface the business user interacts with.
+
+---
+
 ## Architecture
 
 ```
-Scheduler (cron / cloud)
+Scheduler (Task Scheduler / cron — runs on client host)
     |
     v
 run_stage0_job()                       src/stage0/job.py
@@ -168,7 +190,10 @@ Managed by the application. Only system-controlled columns are written.
 
 ---
 
-## How to Run Locally
+## Setup (Technical Operator)
+
+These steps are performed by the technical operator during initial deployment.
+The business user is not involved in any of these steps.
 
 ### Prerequisites
 
@@ -219,11 +244,11 @@ The `assets/attachments/` directory is gitignored.
 ### Run the job
 
 ```bash
-# Normal mode — sends to real leads
-python -m src.stage0.job
+# Test mode — sends only to TEST_RECIPIENT_EMAIL (use before any production run)
+STAGE0_TEST_MODE=1 TEST_RECIPIENT_EMAIL=operator@example.com python -m src.stage0.job
 
-# Test mode — sends only to TEST_RECIPIENT_EMAIL
-STAGE0_TEST_MODE=1 TEST_RECIPIENT_EMAIL=you@internal.com python -m src.stage0.job
+# Production mode — sends to real leads
+python -m src.stage0.job
 ```
 
 ### Run tests
@@ -238,38 +263,85 @@ pytest -k test_idempotent -q    # single scenario
 
 ## Scheduler Integration
 
-`run_stage0_job()` is the intended scheduler target.
+The scheduler target is the command `python -m src.stage0.job`. This invokes
+`run_stage0_job()` internally — that function is not a public API.
 
 - Safe to run multiple times per day — idempotent by design.
 - Each invocation processes only leads that have not yet received an email.
 - Recommended schedule: every 15–60 minutes, depending on lead volume.
-- External cron example:
 
+### Recommended deployment for this project
+
+The intended deployment is a **dedicated client host** running Windows Task Scheduler.
+The wrapper script `scripts\run_stage0_job.cmd` is invoked by the task; log output
+accumulates in `logs\stage0_scheduler.log`. Full Task Scheduler setup instructions
+are in **[RUNBOOK.md § 14](RUNBOOK.md#14-windows-task-scheduler-setup)**.
+
+**The scheduler is enabled only after a successful manual production run** (see
+[Production Considerations](#production-considerations) below). This ensures
+credentials, Sheets access, and SMTP are verified before automated sends begin.
+
+### Alternative schedulers
+
+External cron (Linux):
 ```
 */30 * * * * cd /app && .venv/bin/python -m src.stage0.job >> /var/log/stage0.log 2>&1
 ```
 
-Cloud scheduler (GCP Cloud Scheduler, AWS EventBridge, etc.) can invoke the same
+Cloud schedulers (GCP Cloud Scheduler, AWS EventBridge, etc.) can invoke the same
 command. No persistent process or message queue is required.
 
 ---
 
 ## Production Considerations
 
-Before switching from test to production:
+### Switching from test to production
 
 1. **Replace Sheet ID** — set `GOOGLE_SHEET_ID` to the production spreadsheet.
    Verify that `GOOGLE_SHEET_TAB_INPUT` and `GOOGLE_SHEET_TAB_STATUS` match the
    exact tab names in the production sheet.
-2. **Disable test mode** — ensure `STAGE0_TEST_MODE=0` (or unset). Verify
-   `TEST_RECIPIENT_EMAIL` is absent or empty.
-3. **Monitor logs** — watch for `ERROR:` lines in `auto_email_status`. Each error
-   leaves the lead retryable; manual inspection is recommended before re-running.
-4. **Rollback strategy** — the status sheet is the source of truth. To reset a lead,
-   clear `auto_email_sent_at` and `auto_email_status` in the status tab. The next
-   run will re-process it. Do not modify the input tab.
-5. **Service account permissions** — the service account needs `Sheets Editor` access
-   on the spreadsheet. `Viewer` access is not sufficient.
+2. **Verify service account access** — the service account needs `Sheets Editor` access
+   on the production spreadsheet. `Viewer` access is not sufficient.
+3. **Run one cycle in test mode against the production sheet** — set `STAGE0_TEST_MODE=1`
+   and `TEST_RECIPIENT_EMAIL` to an internal address, then run `python -m src.stage0.job`.
+   Confirm the status tab received rows and the test inbox received emails. This verifies
+   Sheets access and SMTP without contacting real leads.
+
+### First manual production run
+
+Before enabling the scheduler, run the job once manually in production mode:
+
+```bash
+# Ensure STAGE0_TEST_MODE=0 (or unset) in .env
+python -m src.stage0.job
+```
+
+Confirm:
+- Log shows `Stage0 job complete — scanned=N new=M sent=M failed=0`.
+- Status tab shows `auto_email_status = SENT` and `auto_email_sent_at` filled for each
+  processed lead.
+- No `ERROR:` entries in `auto_email_status`.
+
+Enable the scheduler only after this run completes without errors.
+
+### First 48 hours
+
+After the scheduler is enabled, monitor the following at least twice daily:
+
+- `logs\stage0_scheduler.log` — confirm repeating `job start` / `job complete` pairs at
+  the configured interval. No gaps longer than two intervals indicate a missed run.
+- `auto_email_status` column in the status tab — any `ERROR:` value requires investigation.
+  The affected lead remains retryable; fix the root cause before the next cycle.
+- `failed` counter in log summary — a non-zero value on any run is an alert condition.
+- SMTP rate limits — confirm the sending account has not been throttled or suspended.
+
+### Ongoing operations
+
+- **Monitor logs** — watch for `ERROR:` lines in `auto_email_status`. Each error
+  leaves the lead retryable; manual inspection is recommended before re-running.
+- **Rollback strategy** — the status sheet is the source of truth. To reset a lead,
+  clear `auto_email_sent_at` and `auto_email_status` in the status tab. The next
+  run will re-process it. Do not modify the input tab.
 
 ---
 

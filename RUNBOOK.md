@@ -1,8 +1,9 @@
 # Stage 0 — Operational Runbook
 
-This document is the day-to-day operations reference for Stage 0 of the sales automation
-system. It is written for operators who are not familiar with the codebase. For architecture
-and developer documentation see [README.md](README.md).
+**Audience:** Technical operator / deployment engineer.
+This document is written for the person who deploys, configures, and maintains the
+Stage 0 runtime environment. It is not intended for business users — they interact
+with the system exclusively through Google Sheets.
 
 ---
 
@@ -27,7 +28,61 @@ Stage 0 provides automated first-touch email handling for inbound sales leads.
 
 ---
 
-## 2. Preconditions
+## 2. Operating Model
+
+### Roles and responsibilities
+
+| Role | Responsibilities |
+|---|---|
+| **Technical operator** | Deploy the repository, configure `.env`, set up and maintain the scheduler, monitor logs, apply code updates, handle incidents and escalations. |
+| **Business user** | Work exclusively in Google Sheets — review the status tab and mark follow-ups complete. |
+
+### What the business user never touches
+
+- The host machine or its file system.
+- The repository, any code file, or the virtual environment.
+- The `.env` file or any credentials (SMTP, Google service account).
+- Task Scheduler or any runtime configuration.
+
+### Runtime boundary
+
+All runtime components — the scheduler, the Python process, `.env`, secrets, PDF
+attachments, and log files — live on the client host managed by the technical operator.
+Google Sheets is the only interface the business user interacts with.
+
+---
+
+## 3. Host Requirements
+
+The following must be true of the machine running Stage 0:
+
+| Requirement | Detail |
+|---|---|
+| **Stable host** | Machine is always-on or reliably available during business hours. Missed scheduler runs delay lead response. |
+| **Internet access** | Outbound HTTPS (Google Sheets API) and outbound SMTP (port 587) must be reachable. Firewall and VPN rules must permit both. |
+| **Python 3.11+** | Installed and on the system PATH. Verify: `python --version`. |
+| **Scheduler** | Windows Task Scheduler (Windows host) or cron (Linux). Required for automated recurring runs. |
+| **File system paths** | `.env` at the repository root; `secrets/` for the service account JSON; `assets/attachments/` for the 3 PDF files; `logs/` for scheduler output. None of these are committed to version control. |
+| **Restricted access** | Only the technical operator should have access to the host, the repository directory, and the `.env` file. |
+
+---
+
+## 4. Quick Verification
+
+For a technical operator who needs to confirm Stage 0 is alive:
+
+- **Job is running:** Open `logs\stage0_scheduler.log` — you should see repeating pairs of
+  `Stage0 job start` / `Stage0 job complete` lines with timestamps advancing at the configured interval.
+- **Last run succeeded:** Task Scheduler → find the task → **Last Run Result** = `0x0`.
+- **Test mode is active:** Each run's log block must contain a `TEST MODE active` line.
+- **Sheets status is written:** Open `automation_stage0_status` — check that `auto_email_sent_at`
+  and `auto_email_status` are filled for processed leads.
+
+For full setup and troubleshooting see [section 14](#14-windows-task-scheduler-setup) and [section 12](#12-troubleshooting).
+
+---
+
+## 5. Preconditions
 
 ### Google Sheets
 
@@ -81,7 +136,7 @@ when the job runs. The `assets/attachments/` directory is not committed to versi
 
 ---
 
-## 3. Environment Variables
+## 6. Environment Variables
 
 Copy `.env.example` to `.env` and fill in every value before running the job.
 
@@ -133,9 +188,9 @@ Copy `.env.example` to `.env` and fill in every value before running the job.
 
 ---
 
-## 4. How to Run Locally
+## 7. How to Run Locally
 
-### Setup
+### Setup (technical operator only)
 
 ```bash
 git clone <repo-url> && cd ai-sales-automation
@@ -150,20 +205,14 @@ cp .env.example .env
 Place the service account JSON at the path in `GOOGLE_SERVICE_ACCOUNT_JSON`.
 Place the three PDF files at the paths in `STAGE0_PDF_1/2/3`.
 
-### Run the job (test mode — recommended for first run)
+### Run the job (test mode — use before every production change)
 
 ```bash
 # Set STAGE0_TEST_MODE=1 and TEST_RECIPIENT_EMAIL in .env, then:
 python -m src.stage0.job
 ```
 
-Or pass vars inline (Linux / macOS):
-
-```bash
-STAGE0_TEST_MODE=1 TEST_RECIPIENT_EMAIL=you@yourcompany.com python -m src.stage0.job
-```
-
-Check your inbox at `TEST_RECIPIENT_EMAIL` to confirm delivery. Check the status tab in
+Check the inbox at `TEST_RECIPIENT_EMAIL` to confirm delivery. Check the status tab in
 Google Sheets to confirm rows were written.
 
 ### Run the job (production mode)
@@ -186,7 +235,7 @@ server.
 
 ---
 
-## 5. Scheduler Operation
+## 8. Scheduler Operation
 
 The intended scheduler target is:
 
@@ -218,7 +267,7 @@ be used. No persistent process or message queue is required.
 
 ---
 
-## 6. Status Fields and Interpretation
+## 9. Status Fields and Interpretation
 
 All status information is in the `automation_stage0_status` tab.
 
@@ -284,7 +333,101 @@ system then sets `followup_required = NO` on the next run.
 
 ---
 
-## 7. Troubleshooting
+## 10. Safe Change Procedure
+
+### Switching from a test sheet to the production sheet
+
+1. Confirm the production spreadsheet has both required tabs with correct headers (section 5).
+2. Confirm the service account has Sheets Editor access on the production sheet.
+3. Update `GOOGLE_SHEET_ID` in `.env` to the production spreadsheet ID.
+4. Update `GOOGLE_SHEET_TAB_INPUT` and `GOOGLE_SHEET_TAB_STATUS` if the tab names differ.
+5. Run one job cycle in test mode against the production sheet first:
+   - Set `STAGE0_TEST_MODE=1` and `TEST_RECIPIENT_EMAIL=<internal address>`.
+   - Run `python -m src.stage0.job`.
+   - Confirm the status tab received rows and the test inbox received emails.
+6. Proceed to the next section to disable test mode.
+
+### Disabling test mode — pre-production checklist
+
+Work through this list in order before setting `STAGE0_TEST_MODE=0`:
+
+- [ ] `GOOGLE_SHEET_ID` points to the production spreadsheet.
+- [ ] `GOOGLE_SHEET_TAB_INPUT` and `GOOGLE_SHEET_TAB_STATUS` match the production tab names.
+- [ ] A test-mode run against the production sheet completed without errors (step 5 above).
+- [ ] The service account has Sheets Editor access on the production sheet.
+- [ ] SMTP credentials are valid and the sending quota is sufficient.
+- [ ] PDF attachments exist at the configured paths.
+- [ ] `CALENDAR_URL` is the correct production booking link.
+- [ ] Set `STAGE0_TEST_MODE=0` (or remove the variable entirely).
+- [ ] Confirm `TEST_RECIPIENT_EMAIL` is empty or absent.
+
+### First manual production run
+
+Before enabling the scheduler, run the job once manually:
+
+```bash
+python -m src.stage0.job
+```
+
+Confirm:
+- Log shows `Stage0 job complete — scanned=N new=M sent=M failed=0`.
+- Status tab shows `auto_email_status = SENT` and `auto_email_sent_at` filled for each
+  processed lead.
+- No `ERROR:` entries in `auto_email_status`.
+
+**Enable the scheduler only after this run completes without errors.**
+
+### Rollback procedure
+
+If a production run produces unexpected results:
+
+1. **Immediately enable test mode** to prevent further sends to real leads:
+   set `STAGE0_TEST_MODE=1` in `.env` and restart/redeploy the scheduler.
+2. If you switched to the wrong spreadsheet, revert `GOOGLE_SHEET_ID` to the previous value.
+3. To reset a specific lead (so it will be re-processed on the next run):
+   - In the `automation_stage0_status` tab, clear the `auto_email_sent_at` and
+     `auto_email_status` cells for that lead's row.
+   - Do **not** modify the `automation_stage0_input` tab.
+4. Investigate the root cause before re-running in production mode.
+
+---
+
+## 11. First 48 Hours Monitoring
+
+Run through this checklist after enabling the scheduler in production for the first time.
+
+**Check at least twice per day during the first 48 hours.**
+
+### Log file
+
+- [ ] Open `logs\stage0_scheduler.log`.
+- [ ] Confirm repeating pairs of `Stage0 job start` / `Stage0 job complete` at the configured interval.
+- [ ] Confirm no gaps longer than two trigger intervals (indicates missed runs — check Task Scheduler status).
+- [ ] Confirm `failed=0` in every `job complete` line. A non-zero value is an alert condition.
+
+### Google Sheets status tab
+
+- [ ] `auto_email_status` column contains only `SENT` or is empty for unprocessed leads.
+- [ ] No `ERROR:` values. If present, note the error message and investigate root cause before the next cycle.
+- [ ] `auto_email_sent_at` is filled for every lead that received an email.
+- [ ] `followup_due_at` is set correctly to `sent_at + 3 days` for all sent leads.
+
+### SMTP
+
+- [ ] Confirm the sending account has not been throttled or suspended by checking the mail provider's dashboard.
+- [ ] Verify that sent emails are landing in recipients' inboxes and not in spam (check with a test send to a known address if needed).
+
+### Escalation
+
+If any of the above checks fail and the root cause is not immediately clear:
+1. Set `STAGE0_TEST_MODE=1` in `.env` to stop real sends immediately.
+2. Preserve the full `logs\stage0_scheduler.log` file.
+3. Check `auto_email_status` in the status tab for error details.
+4. Investigate and resolve before re-enabling production mode.
+
+---
+
+## 12. Troubleshooting
 
 ### Missing environment variable
 
@@ -292,7 +435,7 @@ system then sets `followup_required = NO` on the next run.
 `ValueError: GOOGLE_SHEET_ID is required`.
 
 **Fix:** Check that `.env` exists, is in the working directory, and contains all required
-variables. Re-read section 3.
+variables. Re-read section 6.
 
 ---
 
@@ -316,7 +459,7 @@ variables. Re-read section 3.
 **What to check:**
 1. The tab names in `GOOGLE_SHEET_TAB_INPUT` and `GOOGLE_SHEET_TAB_STATUS` match the
    actual tab names in the spreadsheet exactly (case-sensitive).
-2. The column headers in `automation_stage0_status` match the names listed in section 2.
+2. The column headers in `automation_stage0_status` match the names listed in section 5.
 
 ---
 
@@ -378,92 +521,61 @@ the error message is written there.
 
 ---
 
-## 8. Safe Change Procedure
+## 13. Emergency Stop
 
-### Switching from a test sheet to the production sheet
+### Option 1 — Enable test mode (preferred: stops real sends immediately)
 
-1. Confirm the production spreadsheet has both required tabs with correct headers (section 2).
-2. Confirm the service account has Sheets Editor access on the production sheet.
-3. Update `GOOGLE_SHEET_ID` in `.env` to the production spreadsheet ID.
-4. Update `GOOGLE_SHEET_TAB_INPUT` and `GOOGLE_SHEET_TAB_STATUS` if the tab names differ.
-5. Run one job cycle in test mode against the production sheet first:
-   - Set `STAGE0_TEST_MODE=1` and `TEST_RECIPIENT_EMAIL=<your address>`.
-   - Run `python -m src.stage0.job`.
-   - Confirm the status tab received rows and the test inbox received emails.
-6. Proceed to the next section to disable test mode.
+Set `STAGE0_TEST_MODE=1` in `.env` and save. No scheduler restart needed — variables are
+read from `.env` at the start of each job run.
 
-### Disabling test mode (pre-production checklist)
+This takes effect on the next run and redirects all outbound emails to `TEST_RECIPIENT_EMAIL`
+instead of real leads. The job continues to execute and write status rows, making it easy to
+verify the stop took effect without losing observability.
 
-Work through this list in order before removing `STAGE0_TEST_MODE`:
-
-- [ ] `GOOGLE_SHEET_ID` points to the production spreadsheet.
-- [ ] `GOOGLE_SHEET_TAB_INPUT` and `GOOGLE_SHEET_TAB_STATUS` match the production tab names.
-- [ ] A test-mode run against the production sheet completed without errors (step 5 above).
-- [ ] The service account has Sheets Editor access on the production sheet.
-- [ ] SMTP credentials are valid and the sending quota is sufficient.
-- [ ] PDF attachments exist at the configured paths.
-- [ ] `CALENDAR_URL` is the correct production booking link.
-- [ ] Set `STAGE0_TEST_MODE=0` (or remove the variable entirely).
-- [ ] Confirm `TEST_RECIPIENT_EMAIL` is empty or absent.
-- [ ] Run `python -m src.stage0.job` once manually and observe logs.
-- [ ] Confirm `auto_email_status = SENT` appears in the status tab for the expected leads.
-
-### Rollback procedure
-
-If a production run produces unexpected results:
-
-1. **Immediately enable test mode** to prevent further sends to real leads:
-   set `STAGE0_TEST_MODE=1` in `.env` and restart/redeploy the scheduler.
-2. If you switched to the wrong spreadsheet, revert `GOOGLE_SHEET_ID` to the previous value.
-3. To reset a specific lead (so it will be re-processed on the next run):
-   - In the `automation_stage0_status` tab, clear the `auto_email_sent_at` and
-     `auto_email_status` cells for that lead's row.
-   - Do **not** modify the `automation_stage0_input` tab.
-4. Investigate the root cause before re-running in production mode.
-
----
-
-## 9. Emergency Stop
-
-### Stop the scheduler
-
-The job has no persistent process — it exits after each run. To stop future runs:
-- **Cron:** comment out or remove the cron entry (`crontab -e`), or set `STAGE0_TEST_MODE=1`.
-- **Cloud scheduler:** pause or disable the schedule in your cloud console.
-- **Systemd timer:** `systemctl stop <timer-name> && systemctl disable <timer-name>`.
-
-### Prevent sending immediately (without stopping the scheduler)
-
-Set `STAGE0_TEST_MODE=1` in the environment and restart/redeploy. This takes effect on
-the next run. The job will still execute and write status rows, but all emails will be
-redirected to `TEST_RECIPIENT_EMAIL` instead of real leads. No sends to real addresses
-will occur while this flag is set.
-
-This is the safest and fastest way to halt outbound email without fully disabling the
+**Use this option first** when the goal is to stop real sends without fully disabling the
 scheduler.
 
-### Confirm the stop took effect
-
-After the next scheduled run, check the log for:
+After the next scheduled run, confirm the log contains:
 
 ```
 [INFO] src.stage0.job — TEST MODE active — all outbound emails go to test recipient
 ```
 
-And confirm that `auto_email_status` in the status tab shows `SENT` only for rows
-processed during the test-mode run (verify by checking the `auto_email_sent_at`
-timestamp).
+### Option 2 — Stop the scheduler (full stop)
+
+Use this when you need to halt all job execution, not just real sends.
+
+- **Task Scheduler (Windows):** Right-click the task → **Disable**. Takes effect immediately.
+  Re-enable via right-click → **Enable**.
+- **Cron:** Comment out or remove the cron entry (`crontab -e`).
+- **Cloud scheduler:** Pause or disable the schedule in your cloud console.
+- **Systemd timer:** `systemctl stop <timer-name> && systemctl disable <timer-name>`.
+
+The job has no persistent process — it exits after each run. Disabling the scheduler
+prevents future invocations but does not interrupt a run already in progress.
+
+### When to use each option
+
+| Situation | Recommended action |
+|---|---|
+| Real sends must stop immediately, scheduler should keep running | Set `STAGE0_TEST_MODE=1` (Option 1) |
+| All job execution must stop (maintenance, incident, decommission) | Disable the scheduler (Option 2) |
+| Need fastest stop with highest confidence | Option 1 first, then Option 2 if needed |
 
 ---
 
-## 10. Windows Task Scheduler Setup
+## 14. Windows Task Scheduler Setup
 
 This section is for operators running Stage 0 on a Windows machine without access to
 cron or cloud schedulers. No knowledge of the codebase is required.
 
+> **Encoding note (Windows):** If you see garbled characters when reading log files or
+> copying Polish column headers, open the file in VS Code (it reads UTF-8 correctly),
+> or run `chcp 65001` in PowerShell before copy-pasting any Polish text.
+
 ---
 
-### 10.1 Prerequisites
+### 14.1 Prerequisites
 
 Before configuring the task, verify the following on the Windows host:
 
@@ -482,7 +594,7 @@ Before configuring the task, verify the following on the Windows host:
    ```
 
 4. **`.env` file present** at the repository root with all required variables filled in
-   (see section 3). The `.env` file must be at `C:\apps\ai-sales-automation\.env`.
+   (see section 6). The `.env` file must be at `C:\apps\ai-sales-automation\.env`.
 
 5. **`secrets\service_account.json`** present at the path set in
    `GOOGLE_SERVICE_ACCOUNT_JSON`.
@@ -497,7 +609,7 @@ Before configuring the task, verify the following on the Windows host:
 
 ---
 
-### 10.2 Creating the Task (Create Task, not Basic Task)
+### 14.2 Creating the Task (Create Task, not Basic Task)
 
 Open **Task Scheduler** (`taskschd.msc`) and in the right-hand panel choose
 **Create Task…** (not "Create Basic Task"). Work through each tab in order.
@@ -582,7 +694,7 @@ Click **OK** and enter the Windows account password when prompted (required for
 
 ---
 
-### 10.3 Ensuring `.env` is Loaded
+### 14.3 Ensuring `.env` is Loaded
 
 The job loads `.env` from the **current working directory**. Task Scheduler sets the
 working directory to the value of the **Start in** field in the Actions tab.
@@ -603,7 +715,7 @@ If instead you see `KeyError` or `ValueError` for a variable name, `.env` is not
 read. Check that:
 1. `Start in` in the Action is set to the repository root.
 2. The `.env` file exists at the repository root (not in a subdirectory).
-3. The `.env` file contains all required variables (section 3).
+3. The `.env` file contains all required variables (section 6).
 
 ---
 
@@ -621,7 +733,7 @@ To confirm the job is running:
 
 ---
 
-### 10.4 Operational Procedures
+### 14.4 Operational Procedures
 
 #### Manual run (on-demand)
 
@@ -669,7 +781,7 @@ result is `0x0`.
 
 ---
 
-### 10.5 Emergency Stop Drill on Windows (Test Mode)
+### 14.5 Emergency Stop Drill on Windows (Test Mode)
 
 Use this procedure to verify that the system can be safely switched to test mode before
 disabling it completely, or whenever you need to stop real sends without stopping the job.
@@ -680,7 +792,7 @@ Open `C:\apps\ai-sales-automation\.env` and set:
 
 ```
 STAGE0_TEST_MODE=1
-TEST_RECIPIENT_EMAIL=operator@yourcompany.com
+TEST_RECIPIENT_EMAIL=test-recipient@example.com
 ```
 
 Save the file. No restart of Task Scheduler is needed — variables are read from `.env`
@@ -724,7 +836,7 @@ in `.env` and save. The next job run will send to real leads.
 
 ---
 
-### 10.6 Ten-Cycle Operational Verification (Windows)
+### 14.6 Ten-Cycle Operational Verification (Windows)
 
 Run through this checklist after the initial setup or after any significant change to the
 environment (new machine, updated `.env`, re-created virtual environment).
