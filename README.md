@@ -98,8 +98,11 @@ Module responsibilities:
 6. **Update status** —
    - Success: writes `Email wysłany` (Europe/Warsaw, `YYYY-MM-DD HH:MM`) and
      `Status emaila = SENT`.
-   - Failure: writes `Status emaila = ERROR: <message>`. `Email wysłany` is
-     intentionally left empty so the lead remains eligible for retry.
+   - Failure: writes a user-friendly `Status emaila` value starting with `ERROR:`,
+     e.g. `ERROR: OCZEKUJE NA PONOWIENIE: limit wysyłki SMTP` for SMTP rate limits,
+     `ERROR: WYMAGA DZIAŁANIA: wiadomość przekracza limit rozmiaru` for oversized
+     messages, or `ERROR: <raw message>` for other technical failures. `Email wysłany`
+     is intentionally left empty so the lead remains eligible for retry.
 7. **Log summary** — `run_stage0_job()` logs `scanned / new / sent / failed` counters
    after the loop. No email addresses or names appear in logs.
 
@@ -130,9 +133,9 @@ Behaviour:
 
 - **Idempotent execution** — running the job multiple times in a row produces no duplicate
   sends. Once `Email wysłany` is set the lead is never re-processed.
-- **Retry only on unconfirmed failure** — a lead with `Status emaila = ERROR` and an
-  empty `Email wysłany` is re-attempted. A lead with both fields set (edge case) is
-  not retried.
+- **Retry only on unconfirmed failure** — a lead with `Status emaila` starting with
+  `ERROR:` and an empty `Email wysłany` is re-attempted. A lead with `Email wysłany`
+  set is never retried, regardless of the status value.
 - **No duplicate sends** — `Email wysłany` is written only after a confirmed SMTP
   delivery. A process crash between send and write leaves the lead retryable, not silently
   dropped.
@@ -167,7 +170,7 @@ filled manually by the sales team.
 | `Lead` | string | Lead full name or company (copied from input tab at row creation) |
 | `Email` | string | Lead email (logical key, normalised to lowercase) |
 | `Email wysłany` | datetime | Timestamp of confirmed delivery (`YYYY-MM-DD HH:MM`, Europe/Warsaw) |
-| `Status emaila` | string | `SENT` \| `ERROR: <message>` \| empty |
+| `Status emaila` | string | `SENT` \| `ERROR: OCZEKUJE NA PONOWIENIE: limit wysyłki SMTP` \| `ERROR: WYMAGA DZIAŁANIA: wiadomość przekracza limit rozmiaru` \| `ERROR: <message>` \| empty |
 | `Follow-up od` | datetime | When follow-up becomes due (Email wysłany + 3 days) |
 | `Wymaga follow-upu` | string | `YES` \| `NO` |
 | `Follow-up wykonany` | datetime | Timestamp when follow-up was marked done (written by sales team) |
@@ -188,7 +191,9 @@ filled manually by the sales team.
     |                    +--> [human follows up] --> Follow-up wykonany=<ts>,
     |                                                Wymaga follow-upu="NO"
     |
-    +-- send ERR --> Status emaila="ERROR: <msg>"  (eligible for retry)
+    +-- send ERR --> Status emaila="ERROR: OCZEKUJE NA PONOWIENIE: limit wysyłki SMTP"
+    |               (or "ERROR: WYMAGA DZIAŁANIA: ..." / "ERROR: <msg>")
+    |               Email wysłany=""  → eligible for retry
 ```
 
 ---
@@ -340,8 +345,13 @@ After the scheduler is enabled, monitor the following at least twice daily:
 
 ### Ongoing operations
 
-- **Monitor logs** — watch for `ERROR:` lines in `Status emaila`. Each error
-  leaves the lead retryable; manual inspection is recommended before re-running.
+- **Monitor logs** — watch for `ERROR:` values in `Status emaila`. Each error
+  leaves the lead retryable (provided `Email wysłany` is empty). Interpretation:
+  - `ERROR: OCZEKUJE NA PONOWIENIE:` — temporary SMTP rate limit; the system will
+    retry automatically on the next run.
+  - `ERROR: WYMAGA DZIAŁANIA:` — operator must act (e.g. reduce PDF size) before
+    retry can succeed.
+  - Other `ERROR:` — technical failure; inspect the raw message in the log for details.
 - **Rollback strategy** — the status sheet is the source of truth. To reset a lead,
   clear `Email wysłany` and `Status emaila` in the status tab. The next
   run will re-process it. Do not modify the input tab.

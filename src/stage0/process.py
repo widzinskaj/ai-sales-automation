@@ -19,6 +19,29 @@ from src.storage.sheets import SheetsClient
 logger = logging.getLogger(__name__)
 
 
+def _friendly_email_error_status(exc: Exception) -> str:
+    """Map a send exception to a user-readable ERROR: status for the sheet.
+
+    The prefix ERROR: is preserved so is_eligible_for_send() keeps treating
+    the row as retryable (empty Email wysłany is the actual retry gate).
+    The raw technical message stays in the log; the sheet shows the friendly form.
+    """
+    raw = str(exc)
+    normalized = raw.lower()
+
+    if "too many emails per second" in normalized:
+        return "ERROR: OCZEKUJE NA PONOWIENIE: limit wysyłki SMTP"
+
+    if (
+        "message exceeded max message size" in normalized
+        or "max message size" in normalized
+        or "552" in normalized
+    ):
+        return "ERROR: WYMAGA DZIAŁANIA: wiadomość przekracza limit rozmiaru"
+
+    return f"ERROR: {raw[:120]}"
+
+
 @dataclass(frozen=True)
 class ProcessReport:
     total_input_leads: int
@@ -110,7 +133,10 @@ def process_new_leads(
         except Exception as exc:
             error_msg = str(exc)[:120]
             logger.error("Failed to send email to %s: %s", email, error_msg)
-            sheets_client.update_row(row_number, {"Status emaila": f"ERROR: {error_msg}"})
+            sheets_client.update_row(
+                row_number,
+                {"Status emaila": _friendly_email_error_status(exc)},
+            )
             emails_failed += 1
             continue
 

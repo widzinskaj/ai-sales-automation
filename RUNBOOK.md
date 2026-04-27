@@ -109,7 +109,7 @@ The operator must create this tab manually with the following headers in row 1,
 | `Lead` | System (once, at row creation) | Lead full name or company — copied from input tab |
 | `Email` | System (once, at row creation) | Lead email address — logical key, unique per row |
 | `Email wysłany` | System | Filled on successful send (`YYYY-MM-DD HH:MM`, Europe/Warsaw) |
-| `Status emaila` | System | `SENT` \| `ERROR: <message>` \| empty |
+| `Status emaila` | System | `SENT` \| `ERROR: OCZEKUJE NA PONOWIENIE: ...` \| `ERROR: WYMAGA DZIAŁANIA: ...` \| `ERROR: <message>` \| empty — see section 9 |
 | `Follow-up od` | System | Filled 3 days after successful send |
 | `Wymaga follow-upu` | System | `YES` / `NO` |
 | `Follow-up wykonany` | Sales team (manual) | Filled when follow-up is completed |
@@ -288,11 +288,13 @@ All status information is in the `automation_stage0_status` tab.
 |---|---|
 | Empty | No send attempt has been made yet. |
 | `SENT` | Email delivered successfully. |
-| `ERROR: <message>` | Last send attempt failed. `Email wysłany` is empty — lead will be retried on next run. |
+| `ERROR: OCZEKUJE NA PONOWIENIE: limit wysyłki SMTP` | Temporary SMTP rate limit. Email was not sent. `Email wysłany` is empty — the system will retry automatically on the next run. No operator action needed unless the limit persists. |
+| `ERROR: WYMAGA DZIAŁANIA: wiadomość przekracza limit rozmiaru` | Email was not sent because the message is too large. `Email wysłany` is empty — but retry will not succeed until the size issue is fixed (reduce PDF attachments or adjust SMTP configuration). |
+| `ERROR: <message>` | Other technical send failure. `Email wysłany` is empty — lead will be retried, but operator should inspect the raw message in the log to determine whether intervention is needed. |
 
-A lead with `Email wysłany` set is **never retried**, even if `Status emaila`
-shows `ERROR`. Both fields being set simultaneously is an edge case that is handled
-conservatively (no retry).
+The retry gate is `Email wysłany` being empty — not the specific error text. A lead
+with `Email wysłany` set is **never retried**, even if `Status emaila` shows `ERROR`.
+Both fields being set simultaneously is an edge case handled conservatively (no retry).
 
 ### `Follow-up od`
 
@@ -330,10 +332,15 @@ system then sets `Wymaga follow-upu = NO` on the next run.
 [next job run]
     Wymaga follow-upu = "NO"
 
-[job runs — send fails]
+[job runs — send fails: SMTP rate limit]
     Email wysłany = ""
-    Status emaila = "ERROR: [Errno 111] Connection refused"
-    (lead will be retried on next run)
+    Status emaila = "ERROR: OCZEKUJE NA PONOWIENIE: limit wysyłki SMTP"
+    (lead will be retried on next run automatically)
+
+[job runs — send fails: message too large]
+    Email wysłany = ""
+    Status emaila = "ERROR: WYMAGA DZIAŁANIA: wiadomość przekracza limit rozmiaru"
+    (lead will be retried, but retry will fail until operator reduces PDF size)
 ```
 
 ---
@@ -413,7 +420,10 @@ Run through this checklist after enabling the scheduler in production for the fi
 ### Google Sheets status tab
 
 - [ ] `Status emaila` column contains only `SENT` or is empty for unprocessed leads.
-- [ ] No `ERROR:` values. If present, note the error message and investigate root cause before the next cycle.
+- [ ] No `ERROR:` values. If present, interpret as follows:
+  - `ERROR: OCZEKUJE NA PONOWIENIE:` — SMTP rate limit; the system will retry automatically. Monitor whether it clears on the next run. If it persists across multiple runs, check provider send limits or reduce the job frequency.
+  - `ERROR: WYMAGA DZIAŁANIA:` — message too large; operator must reduce PDF attachment size or adjust SMTP configuration before retry can succeed.
+  - Other `ERROR:` — technical failure; check the raw message in `logs\stage0_scheduler.log` and investigate root cause before the next cycle.
 - [ ] `Email wysłany` is filled for every lead that received an email.
 - [ ] `Follow-up od` is set correctly to `Email wysłany + 3 days` for all sent leads.
 
@@ -468,17 +478,49 @@ variables. Re-read section 6.
 
 ---
 
-### SMTP error
+### SMTP error — rate limit
 
-**Symptom:** `SMTPAuthenticationError`, `ConnectionRefusedError`, or `TimeoutError` during
-send. The lead's row will show `Status emaila = ERROR: <message>`.
+**Symptom:** `Status emaila = ERROR: OCZEKUJE NA PONOWIENIE: limit wysyłki SMTP`
+
+The SMTP server rejected the message because too many emails were sent in a short
+window. `Email wysłany` is empty — the system will retry automatically on the next
+scheduled run.
+
+**What to check:**
+1. Check your mail provider's sending limits (per-second and per-day quotas).
+2. If the error persists across multiple runs, consider reducing the job frequency
+   (longer Task Scheduler interval) or spreading sends across time.
+3. No code change is needed — the system retries automatically once the rate limit clears.
+
+---
+
+### SMTP error — message too large
+
+**Symptom:** `Status emaila = ERROR: WYMAGA DZIAŁANIA: wiadomość przekracza limit rozmiaru`
+
+The SMTP server rejected the message because the total size (body + PDF attachments)
+exceeds the provider's limit. `Email wysłany` is empty — but retry will fail again
+until the size issue is resolved.
+
+**What to do:**
+1. Compress the PDF files in `assets/attachments/` or replace them with smaller versions.
+2. Confirm the new files are within the provider's size limit.
+3. Re-run the job — the system will retry the affected leads automatically.
+
+---
+
+### SMTP error — authentication or connection failure
+
+**Symptom:** `Status emaila = ERROR: <raw message>` (e.g. `SMTPAuthenticationError`,
+`ConnectionRefusedError`, `TimeoutError`).
 
 **What to check:**
 1. `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` are correct.
 2. The SMTP server is reachable from the host (firewall, VPN).
-3. The sending account has not been rate-limited or suspended.
+3. The sending account has not been suspended.
 
 The lead remains eligible for retry. Fix the SMTP issue, then re-run the job.
+The raw error message is in `logs\stage0_scheduler.log` for diagnosis.
 
 ---
 
@@ -521,8 +563,9 @@ Stage0 job complete — scanned=12 new=3 sent=3 failed=0
 ```
 
 Log lines never contain email addresses, names, or phone numbers. If `failed` is
-non-zero, check the `Status emaila` column in the status tab for `ERROR:` entries —
-the error message is written there.
+non-zero, check the `Status emaila` column in the status tab for `ERROR:` entries.
+The sheet shows a user-friendly status (e.g. `ERROR: OCZEKUJE NA PONOWIENIE: ...`);
+the raw technical error message is in the log file on the same line as `Failed to send email`.
 
 ---
 
