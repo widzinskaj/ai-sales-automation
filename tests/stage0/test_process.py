@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from src.stage0.process import ProcessReport, process_new_leads
+from src.stage0.process import ProcessReport, _friendly_email_error_status, process_new_leads
 
 CALENDAR_URL = "https://calendly.com/flexihome/konsultacja"
 
@@ -185,6 +185,89 @@ class TestSendFailure:
 
         assert report.emails_sent == 0
         assert report.emails_failed == 2
+
+    @patch("src.stage0.process.get_stage0_attachments_from_env", return_value=FAKE_ATTACHMENTS)
+    @patch("src.stage0.process.build_stage0_email")
+    @patch(
+        "src.stage0.process.send_email_draft",
+        side_effect=RuntimeError("Too many emails per second"),
+    )
+    def test_smtp_rate_limit_maps_to_friendly_status(
+        self, mock_send, mock_build, mock_attachments
+    ):
+        mock_build.return_value = MagicMock(subject="s")
+        sheets = _make_sheets(new_leads=[LEAD_1], row_number=2)
+
+        process_new_leads(sheets, CALENDAR_URL, **FAKE_SMTP)
+
+        _, updates = sheets.update_row.call_args[0]
+        assert updates["Status emaila"] == "ERROR: OCZEKUJE NA PONOWIENIE: limit wysyłki SMTP"
+
+    @patch("src.stage0.process.get_stage0_attachments_from_env", return_value=FAKE_ATTACHMENTS)
+    @patch("src.stage0.process.build_stage0_email")
+    @patch(
+        "src.stage0.process.send_email_draft",
+        side_effect=RuntimeError(
+            "Message exceeded max message size of 5242880 bytes"
+        ),
+    )
+    def test_message_too_large_maps_to_friendly_status(
+        self, mock_send, mock_build, mock_attachments
+    ):
+        mock_build.return_value = MagicMock(subject="s")
+        sheets = _make_sheets(new_leads=[LEAD_1], row_number=2)
+
+        process_new_leads(sheets, CALENDAR_URL, **FAKE_SMTP)
+
+        _, updates = sheets.update_row.call_args[0]
+        assert (
+            updates["Status emaila"]
+            == "ERROR: WYMAGA DZIAŁANIA: wiadomość przekracza limit rozmiaru"
+        )
+
+
+# ---------------------------------------------------------------------------
+# _friendly_email_error_status unit tests
+# ---------------------------------------------------------------------------
+
+class TestFriendlyEmailErrorStatus:
+    def test_generic_error_preserves_raw_message(self):
+        status = _friendly_email_error_status(RuntimeError("SMTP down"))
+        assert status.startswith("ERROR:")
+        assert "SMTP down" in status
+
+    def test_rate_limit_exact_status(self):
+        status = _friendly_email_error_status(
+            RuntimeError("Too many emails per second")
+        )
+        assert status == "ERROR: OCZEKUJE NA PONOWIENIE: limit wysyłki SMTP"
+
+    def test_rate_limit_case_insensitive(self):
+        status = _friendly_email_error_status(
+            RuntimeError("too many emails per second — slow down")
+        )
+        assert status == "ERROR: OCZEKUJE NA PONOWIENIE: limit wysyłki SMTP"
+
+    def test_message_too_large_exact_status(self):
+        status = _friendly_email_error_status(
+            RuntimeError("Message exceeded max message size of 5242880 bytes")
+        )
+        assert status == "ERROR: WYMAGA DZIAŁANIA: wiadomość przekracza limit rozmiaru"
+
+    def test_552_code_maps_to_size_limit(self):
+        status = _friendly_email_error_status(
+            RuntimeError("552 5.3.4 Message size exceeds fixed limit")
+        )
+        assert status == "ERROR: WYMAGA DZIAŁANIA: wiadomość przekracza limit rozmiaru"
+
+    def test_max_message_size_substring(self):
+        status = _friendly_email_error_status(RuntimeError("max message size exceeded"))
+        assert status == "ERROR: WYMAGA DZIAŁANIA: wiadomość przekracza limit rozmiaru"
+
+    def test_long_raw_message_truncated_to_120(self):
+        long_msg = "x" * 200
+        status = _friendly_email_error_status(RuntimeError(long_msg))
+        assert status == f"ERROR: {'x' * 120}"
 
 
 # ---------------------------------------------------------------------------

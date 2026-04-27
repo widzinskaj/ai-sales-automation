@@ -54,7 +54,7 @@ manually by the sales team.
 | `Lead` | string | Lead full name or company (copied from input tab at row creation) |
 | `Email` | string | Lead email (logical key, normalised to lowercase) |
 | `Email wysłany` | datetime | Timestamp of confirmed delivery (`YYYY-MM-DD HH:MM`, Europe/Warsaw) |
-| `Status emaila` | string | `SENT` \| `ERROR: <message>` \| empty |
+| `Status emaila` | string | `SENT` \| `ERROR: OCZEKUJE NA PONOWIENIE: limit wysyłki SMTP` \| `ERROR: WYMAGA DZIAŁANIA: wiadomość przekracza limit rozmiaru` \| `ERROR: <message>` \| empty |
 | `Follow-up od` | datetime | When follow-up becomes due (Email wysłany + 3 days) |
 | `Wymaga follow-upu` | string | `YES` \| `NO` |
 | `Follow-up wykonany` | datetime | Timestamp when follow-up was marked done (written by sales team) |

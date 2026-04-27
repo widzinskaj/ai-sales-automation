@@ -89,6 +89,22 @@ class TestIsEligibleForSend:
         row = {"Email wysłany": "", "Status emaila": "error: smtp"}
         assert is_eligible_for_send(row) is False
 
+    def test_friendly_rate_limit_status_is_eligible(self):
+        # Friendly status still starts with ERROR: → eligible for retry.
+        row = {
+            "Email wysłany": "",
+            "Status emaila": "ERROR: OCZEKUJE NA PONOWIENIE: limit wysyłki SMTP",
+        }
+        assert is_eligible_for_send(row) is True
+
+    def test_friendly_size_limit_status_is_eligible(self):
+        # WYMAGA DZIAŁANIA also starts with ERROR: → eligible; operator must fix PDFs first.
+        row = {
+            "Email wysłany": "",
+            "Status emaila": "ERROR: WYMAGA DZIAŁANIA: wiadomość przekracza limit rozmiaru",
+        }
+        assert is_eligible_for_send(row) is True
+
 
 # ---------------------------------------------------------------------------
 # Pipeline tests (required by spec)
