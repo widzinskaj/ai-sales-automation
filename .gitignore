@@ -5,8 +5,10 @@ __pycache__/
 *.pyd
 
 # Environment
+# Environment
 .env
 .env.*
+!.env.example
 
 # Secrets & credentials
 secrets/
