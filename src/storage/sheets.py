@@ -168,6 +168,7 @@ class SheetsClient:
         input_rows = self.read_input_rows()
         status_index = self.get_status_index_by_email()
 
+        new_rows = []
         for row in input_rows:
             email = str(row.get("Email", "")).strip().lower()
             if not email:
@@ -175,18 +176,18 @@ class SheetsClient:
 
             if email not in status_index:
                 lead_name = str(row.get("Imię i nazwisko / Firma", "")).strip()
-                self._ws_status.append_row(
-                    [
-                        lead_name,  # Lead
-                        email,      # Email
-                        "",         # Email wysłany
-                        "",         # Status emaila
-                        "",         # Follow-up od
-                        "",         # Wymaga follow-upu
-                        "",         # Follow-up wykonany
-                    ],
-                    value_input_option="USER_ENTERED",
-                )
+                new_rows.append([
+                    lead_name,  # Lead
+                    email,      # Email
+                    "",         # Email wysłany
+                    "",         # Status emaila
+                    "",         # Follow-up od
+                    "",         # Wymaga follow-upu
+                    "",         # Follow-up wykonany
+                ])
+
+        if new_rows:
+            self._ws_status.append_rows(new_rows, value_input_option="USER_ENTERED")
 
     # ------------------------------------------------------------------
     # Write (only system columns, USER_ENTERED)
