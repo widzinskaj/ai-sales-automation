@@ -59,7 +59,10 @@ def run_stage0_job(
             service_account_json=config.GOOGLE_SERVICE_ACCOUNT_JSON,
             sheet_id=config.GOOGLE_SHEET_ID,
         )
-        sheets_client.ensure_date_column_format()
+        try:
+            sheets_client.ensure_date_column_format()
+        except Exception as exc:
+            logger.warning("ensure_date_column_format skipped: %s", exc)
 
     report = process_new_leads(
         sheets_client,
