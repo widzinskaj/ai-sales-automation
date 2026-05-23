@@ -125,7 +125,7 @@ class SheetsClient:
 
     def read_input_rows(self) -> list[dict[str, str]]:
         """Return all non-empty input rows with normalized email."""
-        records = self._ws_input.get_all_records(head=1, default_blank="")
+        records = self._ws_input.get_all_records(head=1, default_blank="", expected_headers=INPUT_HEADERS)
 
         cleaned_rows: list[dict[str, str]] = []
 
@@ -143,12 +143,12 @@ class SheetsClient:
 
     def get_all_rows(self) -> list[dict[str, str]]:
         """Return every data row as a dict keyed by header name."""
-        records = self._ws_status.get_all_records(head=1, default_blank="")
+        records = self._ws_status.get_all_records(head=1, default_blank="", expected_headers=STATUS_HEADERS)
         return [{k: str(v) for k, v in row.items()} for row in records]
 
     def read_status_rows(self) -> list[dict[str, str]]:
         """Return every status row as a dict keyed by header name."""
-        records = self._ws_status.get_all_records(head=1, default_blank="")
+        records = self._ws_status.get_all_records(head=1, default_blank="", expected_headers=STATUS_HEADERS)
         return [{k: str(v) for k, v in row.items()} for row in records]
 
 
