@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -146,6 +147,7 @@ def process_new_leads(
             "Status emaila": "SENT",
         })
         emails_sent += 1
+        time.sleep(10)
 
     logger.info(
         "process_new_leads done — input=%d new=%d sent=%d failed=%d",
