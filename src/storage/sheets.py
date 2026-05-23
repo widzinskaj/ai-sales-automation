@@ -226,14 +226,17 @@ class SheetsClient:
             if col_name not in SYSTEM_COLUMNS:
                 raise ValueError(f"Refusing to write non-system column: {col_name}")
 
-        data = [
-            {
-                "range": gspread.utils.rowcol_to_a1(row_number, self._col_index(col_name)),
-                "values": [[value]],
-            }
-            for col_name, value in updates.items()
-        ]
-        _with_retry(lambda: self._ws_status.batch_update(data, value_input_option="USER_ENTERED"))
+        items = list(updates.items())
+        _with_retry(lambda: self._ws_status.batch_update(
+            [
+                {
+                    "range": gspread.utils.rowcol_to_a1(row_number, self._col_index(cn)),
+                    "values": [[v]],
+                }
+                for cn, v in items
+            ],
+            value_input_option="USER_ENTERED",
+        ))
         logger.info("Updated row %d: %s", row_number, list(updates.keys()))
 
     # ------------------------------------------------------------------
