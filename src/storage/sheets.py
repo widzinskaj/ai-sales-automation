@@ -9,6 +9,9 @@ INPUT_HEADERS = [
     "Telefon dodatkowy",
 ]
 
+# Column index (1-based) where "Duplikat" is written for duplicate input rows.
+_INPUT_DUPLICATE_COL = len(INPUT_HEADERS) + 1  # column D
+
 # Column headers for the status tab, in order.
 # "Lead" is written once at row creation and is not a system-managed column.
 # The logical key is "Email" (unique per lead).
@@ -130,7 +133,7 @@ class SheetsClient:
         seen_emails: set[str] = set()
         cleaned_rows: list[dict[str, str]] = []
 
-        for row in records:
+        for idx, row in enumerate(records):
             email = str(row.get("Email", "")).strip().lower()
 
             if not email:
@@ -138,6 +141,7 @@ class SheetsClient:
 
             if email in seen_emails:
                 logger.warning("Duplicate email in input sheet — skipping: %s", email)
+                self._mark_input_duplicate(idx + 2)
                 continue
 
             seen_emails.add(email)
@@ -304,6 +308,17 @@ class SheetsClient:
             if str(cell).strip().lower() == email_norm:
                 return i + 1  # convert 0-based list index to 1-based row number
         return None
+
+    def _mark_input_duplicate(self, row_number: int) -> None:
+        """Write 'Duplikat' to the marker column of the given input row."""
+        cell = gspread.utils.rowcol_to_a1(row_number, _INPUT_DUPLICATE_COL)
+        try:
+            _with_retry(lambda: self._ws_input.batch_update(
+                [{"range": cell, "values": [["Duplikat"]]}],
+                value_input_option="USER_ENTERED",
+            ))
+        except Exception as exc:
+            logger.warning("Could not mark duplicate in input row %d: %s", row_number, exc)
 
     def _col_index(self, col_name: str) -> int:
         """Return 1-based column index for *col_name*."""
