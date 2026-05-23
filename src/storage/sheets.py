@@ -24,12 +24,35 @@ STATUS_HEADERS = [
 
 
 import logging
+import time
 from typing import Any
 
 import gspread
 from google.oauth2.service_account import Credentials
 
 logger = logging.getLogger(__name__)
+
+
+def _with_retry(fn, max_retries: int = 5, base_delay: int = 60) -> Any:
+    """Call fn(), retrying on Sheets API 429 with exponential backoff."""
+    delay = base_delay
+    for attempt in range(max_retries):
+        try:
+            return fn()
+        except gspread.exceptions.APIError as exc:
+            is_429 = (
+                hasattr(exc, "response")
+                and getattr(exc.response, "status_code", None) == 429
+            )
+            if is_429 and attempt < max_retries - 1:
+                logger.warning(
+                    "Sheets API 429 — waiting %ds before retry %d/%d",
+                    delay, attempt + 1, max_retries,
+                )
+                time.sleep(delay)
+                delay = min(delay * 2, 300)
+            else:
+                raise
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -187,7 +210,7 @@ class SheetsClient:
                 ])
 
         if new_rows:
-            self._ws_status.append_rows(new_rows, value_input_option="USER_ENTERED")
+            _with_retry(lambda: self._ws_status.append_rows(new_rows, value_input_option="USER_ENTERED"))
 
     # ------------------------------------------------------------------
     # Write (only system columns, USER_ENTERED)
@@ -203,15 +226,14 @@ class SheetsClient:
             if col_name not in SYSTEM_COLUMNS:
                 raise ValueError(f"Refusing to write non-system column: {col_name}")
 
-        for col_name, value in updates.items():
-            col_index = self._col_index(col_name)
-            cell_label = gspread.utils.rowcol_to_a1(row_number, col_index)
-            self._ws_status.update(
-                cell_label,
-                [[value]],
-                value_input_option="USER_ENTERED",
-            )
-
+        data = [
+            {
+                "range": gspread.utils.rowcol_to_a1(row_number, self._col_index(col_name)),
+                "values": [[value]],
+            }
+            for col_name, value in updates.items()
+        ]
+        _with_retry(lambda: self._ws_status.batch_update(data, value_input_option="USER_ENTERED"))
         logger.info("Updated row %d: %s", row_number, list(updates.keys()))
 
     # ------------------------------------------------------------------
