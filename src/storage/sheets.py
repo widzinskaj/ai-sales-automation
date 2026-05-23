@@ -124,9 +124,10 @@ class SheetsClient:
     # ------------------------------------------------------------------
 
     def read_input_rows(self) -> list[dict[str, str]]:
-        """Return all non-empty input rows with normalized email."""
+        """Return all non-empty input rows with normalized email, deduplicated by email."""
         records = self._ws_input.get_all_records(head=1, default_blank="", expected_headers=INPUT_HEADERS)
 
+        seen_emails: set[str] = set()
         cleaned_rows: list[dict[str, str]] = []
 
         for row in records:
@@ -135,6 +136,11 @@ class SheetsClient:
             if not email:
                 continue  # skip empty rows
 
+            if email in seen_emails:
+                logger.warning("Duplicate email in input sheet — skipping: %s", email)
+                continue
+
+            seen_emails.add(email)
             row["Email"] = email
             cleaned_rows.append({k: str(v) for k, v in row.items()})
 
