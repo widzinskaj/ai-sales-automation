@@ -87,6 +87,14 @@ def process_new_leads(
     input_rows = sheets_client.read_input_rows()
     new_leads = sheets_client.get_new_leads()
 
+    # Build email→row_number index once to avoid N separate API reads
+    status_rows_snapshot = sheets_client.read_status_rows()
+    row_number_index: dict[str, int] = {
+        str(r.get("Email", "")).strip().lower(): idx + 2
+        for idx, r in enumerate(status_rows_snapshot)
+        if str(r.get("Email", "")).strip().lower()
+    }
+
     attachments: list[Path] = get_stage0_attachments_from_env()
 
     emails_sent = 0
@@ -112,7 +120,7 @@ def process_new_leads(
             emails_failed += 1
             continue
 
-        row_number = sheets_client.get_status_row_number_by_email(email)
+        row_number = row_number_index.get(email)
         if row_number is None:
             logger.error("Status row not found for email=%s — skipping", email)
             emails_failed += 1
@@ -193,7 +201,7 @@ def process_followups(
     rows = sheets_client.read_status_rows()
     updated = 0
 
-    for row in rows:
+    for idx, row in enumerate(rows):
         email = str(row.get("Email", "")).strip().lower()
         if not email:
             continue
@@ -209,11 +217,7 @@ def process_followups(
         if not patch:
             continue
 
-        row_number = sheets_client.get_status_row_number_by_email(email)
-        if row_number is None:
-            continue
-
-        sheets_client.update_row(row_number, patch)
+        sheets_client.update_row(idx + 2, patch)
         updated += 1
 
     logger.info("Follow-up processing done — updated=%d", updated)
